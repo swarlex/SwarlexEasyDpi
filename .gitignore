@@ -1,0 +1,15 @@
+.tools/
+build/
+dist/
+*.new
+*.old
+
+# Android surumu henuz yayinda degil (yerel calisma)
+android/
+shared/
+native/byedpi/
+
+# local notes for the coding assistant (not part of the project)
+CLAUDE.md
+.claude/
+.vs/
