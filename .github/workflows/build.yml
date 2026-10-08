@@ -1,0 +1,38 @@
+# Builds SwarlexEasyDpi on GitHub's Windows runners and runs the tests on every push and pull request.
+# (Release files are built locally by tools/release.ps1; this build shows the source compiles and passes.)
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build and test (C# compiler that ships with Windows + pinned llvm-mingw)
+        shell: powershell
+        run: .\build.ps1 -Test
+
+      - name: SHA-256 of the build
+        shell: powershell
+        run: Get-FileHash dist\SwarlexEasyDpi.exe -Algorithm SHA256 | Format-Table Hash, Path -AutoSize | Out-String -Width 200
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SwarlexEasyDpi-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || github.ref_name }}
+          path: |
+            dist/SwarlexEasyDpi.exe
+            dist/SwarlexEasyDpi.exe.sha256
+          if-no-files-found: error
