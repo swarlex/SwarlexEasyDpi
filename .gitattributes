@@ -1,0 +1,7 @@
+*       text=auto
+
+# PowerShell scripts and C# sources are checked out with Windows line endings
+*.ps1   text eol=crlf
+*.cs    text eol=crlf
+*.png   binary
+*.ico   binary

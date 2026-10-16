@@ -25,6 +25,7 @@ namespace SwarlexEasyDpi
         public bool Check, Marked, Indent, KeepOpen, Disabled;
         public Action Action;
         public bool Separator;
+        public string Side;      // dolu: tiklayinca menunun yaninda bu yan pencere acilir ("lang" / "prefs")
         public static MenuItem Line() { return new MenuItem { Separator = true }; }
     }
 
@@ -32,6 +33,15 @@ namespace SwarlexEasyDpi
     {
         public event Action ToggleClicked;
         public Func<List<MenuItem>> MenuItems;   // menu her acilista yeniden kurulur
+        public Func<string, List<MenuItem>> SideItems;   // yan pencere (Dil / Tercihler) satirlari
+        public bool Animate = true;              // tercih: acilis animasyonu
+        public string ThemeMode = "auto";        // tercih: auto (gorev cubugu gibi) | dark | light
+
+        // Menunun yaninda acilan yan pencere (SwarlexBattery'deki Tercihler penceresi gibi).
+        Window side;
+        readonly ContentControl sideBody = new ContentControl { Focusable = false };
+        IntPtr sideHwnd;
+        string sideKind;
 
         const double Btn = 136, Stroke = 6;
 
@@ -70,8 +80,19 @@ namespace SwarlexEasyDpi
             win.Content = new Border { Padding = new Thickness(14), Child = body, Focusable = false };
             win.FocusVisualStyle = null;
             win.SourceInitialized += delegate { hwnd = new WindowInteropHelper(win).Handle; Win.ToolWindow(hwnd); Win.FlyoutFrame(hwnd, !light); };
-            win.Deactivated += delegate { Close(); };
+            win.Deactivated += delegate { CloseUnlessFocused(); };
             win.KeyDown += delegate(object s, KeyEventArgs e) { if (e.Key == Key.Escape) Close(); };
+            side = new Window
+            {
+                WindowStyle = WindowStyle.None, AllowsTransparency = false, ShowInTaskbar = false, Topmost = true, ShowActivated = false,
+                ResizeMode = ResizeMode.NoResize, SizeToContent = SizeToContent.Height, Width = 320,
+                FontFamily = win.FontFamily, Title = "SwarlexEasyDpi",
+            };
+            side.Content = new Border { Padding = new Thickness(8), Child = sideBody, Focusable = false };
+            side.SourceInitialized += delegate { sideHwnd = new WindowInteropHelper(side).Handle; Win.ToolWindow(sideHwnd); Win.FlyoutFrame(sideHwnd, !light); };
+            side.Deactivated += delegate { CloseUnlessFocused(); };
+            side.KeyDown += delegate(object s, KeyEventArgs e) { if (e.Key == Key.Escape) Close(); };
+            new WindowInteropHelper(side).EnsureHandle();
             ApplyTheme();
             panelView = BuildPanel();
             Apply(false);
@@ -88,7 +109,7 @@ namespace SwarlexEasyDpi
 
         void ApplyTheme()
         {
-            light = Art.LightTaskbar();
+            light = ThemeMode == "light" || (ThemeMode == "auto" && Art.LightTaskbar());
             panel = light ? Color.FromRgb(243, 243, 243) : Color.FromRgb(32, 32, 32);
             surface = light ? Color.FromRgb(255, 255, 255) : Color.FromRgb(44, 44, 44);
             surfaceHover = light ? Color.FromRgb(236, 236, 236) : Color.FromRgb(56, 56, 56);
@@ -96,6 +117,7 @@ namespace SwarlexEasyDpi
             muted = light ? Color.FromRgb(96, 96, 96) : Color.FromRgb(160, 160, 160);
             track = light ? Color.FromArgb(40, 0, 0, 0) : Color.FromArgb(46, 255, 255, 255);
             win.Background = new SolidColorBrush(panel);
+            if (side != null) side.Background = win.Background;
             fgBrush.Color = fg; mutedBrush.Color = muted; trackBrush.Color = track;
             faceBrush.BeginAnimation(SolidColorBrush.ColorProperty, null); faceBrush.Color = surface; // eski hover animasyonu yeni temayi ezmesin
             accentBrush.Color = C(light ? Art.GreenLight : Art.Green);
@@ -106,6 +128,7 @@ namespace SwarlexEasyDpi
             rowStyle = (Style)XamlReader.Parse(string.Format(xaml, "Transparent", hover));
             rowStyleMarked = (Style)XamlReader.Parse(string.Format(xaml, hover, hover));
             if (hwnd != IntPtr.Zero) Win.FlyoutFrame(hwnd, !light);
+            if (sideHwnd != IntPtr.Zero) Win.FlyoutFrame(sideHwnd, !light);
         }
 
         static Color C(System.Drawing.Color c) { return Color.FromArgb(c.A, c.R, c.G, c.B); }
@@ -229,7 +252,7 @@ namespace SwarlexEasyDpi
                     break;
                 case State.Error:
                     main = Strings.T("stError");
-                    sub = info.Error == "errStart" || info.Error == "errStopped" ? Strings.T(info.Error) : (info.Error ?? "");
+                    sub = info.Error == "errStart" || info.Error == "errStopped" || info.Error == "errStuck" ? Strings.T(info.Error) : (info.Error ?? "");
                     break;
                 default:
                     main = Strings.T("stOff"); sub = Strings.T("subOff"); break;
@@ -291,6 +314,7 @@ namespace SwarlexEasyDpi
 
         Border MenuRow(MenuItem it)
         {
+            if (it.Side != null) { it.Marked = sideKind == it.Side; it.Tail = "E76C"; it.KeepOpen = true; }
             var b = new Border { Padding = new Thickness(10, 7, 10, 7), CornerRadius = new CornerRadius(4), Cursor = it.Disabled ? Cursors.Arrow : Cursors.Hand,
                                  Style = it.Marked ? rowStyleMarked : rowStyle, Opacity = it.Disabled ? 0.5 : 1 };
             var g = new Grid();
@@ -307,6 +331,7 @@ namespace SwarlexEasyDpi
                 {
                     try
                     {
+                        if (it.Side != null) { ToggleSide(it.Side); return; }
                         if (!it.KeepOpen) Close();
                         if (it.Action != null) it.Action();
                         if (it.KeepOpen) RefreshMenu();
@@ -326,13 +351,65 @@ namespace SwarlexEasyDpi
             return root;
         }
 
+        FrameworkElement BuildSide(string kind)
+        {
+            var root = new StackPanel();
+            if (SideItems != null)
+                foreach (var it in SideItems(kind))
+                    root.Children.Add(it.Separator ? (UIElement)new Border { Height = 1, Background = lineBrush, Margin = new Thickness(4, 5, 4, 5) } : MenuRow(it));
+            return root;
+        }
+
+        void ToggleSide(string kind)
+        {
+            if (sideKind == kind) { CloseSide(); RefreshMenu(); return; }
+            sideKind = kind;
+            side.Width = kind == "lang" ? 200 : 330;
+            sideBody.Content = BuildSide(kind);
+            if (!side.IsVisible) { side.Left = -20000; side.Top = -20000; side.Show(); }
+            side.UpdateLayout();
+            PlaceSide();
+            if (Animate) Slide(side, false);
+            RefreshMenu();
+        }
+
+        void CloseSide() { sideKind = null; if (side.IsVisible) side.Hide(); }
+
+        // Odak ne menude ne yan pencerede ise kapat (ikisi arasinda gecis kapatmasin).
+        void CloseUnlessFocused()
+        {
+            win.Dispatcher.BeginInvoke(new Action(delegate
+            {
+                if (open != null && !win.IsActive && !side.IsActive) Close();
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        // Menunun saginda (yer yoksa solunda); gorev cubugu alttaysa alt kenarlari hizali.
+        void PlaceSide()
+        {
+            if (sideHwnd == IntPtr.Zero || hwnd == IntPtr.Zero) return;
+            var scr = Forms.Screen.FromPoint(anchor);
+            var wa = Win.AreaOutsideTaskbar(scr.Bounds, scr.WorkingArea);
+            int mx, my, mw, mh, w, h;
+            if (!Win.WindowRect(hwnd, out mx, out my, out mw, out mh) || !Win.WindowSize(sideHwnd, out w, out h)) return;
+            double scale = Win.DpiScale(anchor);
+            int gap = (int)Math.Round(4 * scale), m = (int)Math.Round(8 * scale);
+            int x = mx + mw + gap;
+            if (x + w > wa.Right - m) x = Math.Max(wa.Left + m, mx - w - gap);
+            int y = above ? my + mh - h : my;
+            y = Math.Max(wa.Top + m, Math.Min(wa.Bottom - h - m, y));
+            Win.MoveTo(sideHwnd, x, y);
+        }
+
         public void RefreshMenu()
         {
             if (open != "menu") return;
+            if (sideKind != null) { sideBody.Content = BuildSide(sideKind); side.UpdateLayout(); }
             body.Content = BuildMenu();
             // satir eklenip cikinca alt kenar gorev cubugunun ustunde kalsin
             win.UpdateLayout();
             Place();
+            if (sideKind != null) PlaceSide();
         }
 
         // ---------------------------------------------------------------- acma / kapama
@@ -349,6 +426,7 @@ namespace SwarlexEasyDpi
         {
             if (open == "menu") { Close(); return; }
             if (JustClosed("menu")) return;
+            CloseSide();
             open = "menu";
             ApplyTheme();
             win.Width = 270;
@@ -358,6 +436,7 @@ namespace SwarlexEasyDpi
 
         public void ShowPanel(System.Drawing.Point at)
         {
+            CloseSide();
             open = "panel";
             ApplyTheme();
             win.Width = 300;
@@ -383,6 +462,7 @@ namespace SwarlexEasyDpi
             lastClosed = open; lastClosedAt = DateTime.Now;
             open = null;
             win.Hide();
+            CloseSide();
             // gizliyken sonsuz animasyonlar islemci harcamasin; panel acilinca Apply yeniden baslatir
             glow.BeginAnimation(UIElement.OpacityProperty, null);
             spin.BeginAnimation(RotateTransform.AngleProperty, null);
@@ -406,11 +486,32 @@ namespace SwarlexEasyDpi
         {
             var el = win.Content as FrameworkElement;
             if (el == null) return;
-            var tt = new TranslateTransform(0, above ? 14 : -14);
+            el.BeginAnimation(UIElement.OpacityProperty, null); el.Opacity = 1; el.RenderTransform = null;
+            if (!Animate) return;
+            Slide(win, true);
+        }
+
+        // Icerik gorev cubugu yonunden (yan pencere: yandan) kayarak ve belirerek gelir.
+        void Slide(Window w, bool vertical)
+        {
+            var el = w.Content as FrameworkElement;
+            if (el == null) return;
+            var tt = vertical ? new TranslateTransform(0, above ? 14 : -14) : new TranslateTransform(-10, 0);
             el.RenderTransform = tt;
             var dur = Ms(200); var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
             el.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = ease });
-            tt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(tt.Y, 0, dur) { EasingFunction = ease });
+            if (vertical) tt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(tt.Y, 0, dur) { EasingFunction = ease });
+            else tt.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(tt.X, 0, dur) { EasingFunction = ease });
+        }
+
+        // Tema tercihi degisince: renkler, satir stilleri ve acik pencereler yeniden.
+        public void Retheme()
+        {
+            ApplyTheme();
+            logos.Clear();
+            Apply(false);
+            if (open == "panel") body.Content = panelView;
+            RefreshMenu();
         }
 
         // Dil degisince acik gorunumu yeniden yaz.

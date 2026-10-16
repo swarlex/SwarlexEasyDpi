@@ -22,7 +22,7 @@ namespace SwarlexEasyDpi
         public static readonly string Settings = Path.Combine(Dir, "ayarlar.ini");
         public static readonly string LogFile = Path.Combine(Dir, "kayit.txt");
         public static readonly string InstalledExe = Path.Combine(Dir, "SwarlexEasyDpi.exe");
-        public static readonly string Gdpi = Path.Combine(Bin, "goodbyedpi.exe");
+        public static readonly string GdpiDll = Path.Combine(Bin, "gdpi.dll");
     }
 
     internal static class Log
@@ -53,23 +53,23 @@ namespace SwarlexEasyDpi
     // "--dnsv6-port 1111" hatasi (Cloudflare o portta DNS sunmaz) duzeltildi.
     internal static class Configs
     {
+        // GoodbyeDPI argumanlari; Doh[i]: ayrica sifreli DNS (dns.c) acilir. Duz DNS'i ucuncu bir
+        // sunucuya yonlendiren eski ayarlarin (--dns-addr) yerini aldi: sorgular HTTPS ile gider ve
+        // 53. portu disariya kapali aglarda da calisir.
         public static readonly string[] List = {
+            "-9 --set-ttl 7",                                                     // easydpi
             "-9 --set-ttl 7",
-            "-9 --set-ttl 7 --dns-addr 9.9.9.9",                                  // easydpi varsayilan
             "-5 --set-ttl 5",                                                     // cagritaskn
-            "-5 --set-ttl 5 --dns-addr 1.1.1.1 --dnsv6-addr 2606:4700:4700::1111",
+            "-5 --set-ttl 5",
         };
+        public static readonly bool[] Doh = { false, true, false, true };
 
         public static List<string> Args(int i) { return new List<string>(List[i].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)); }
 
-        // DNS yonlendiriyorsa hangi sunucuya (ipucu metninde gosterilir), yoksa null.
-        public static string DnsName(int i)
-        {
-            string c = List[i];
-            if (c.Contains("9.9.9.9")) return "Quad9";
-            if (c.Contains("1.1.1.1")) return "Cloudflare";
-            return null;
-        }
+        // Sifreli DNS kullaniyorsa sunucu adi (panelde ve ipucunda gosterilir), yoksa null.
+        public static string DnsName(int i) { return Doh[i] ? "DoH" : null; }   // Cloudflare, yedek Google
+
+        public static string Describe(int i) { return List[i] + (Doh[i] ? " + DoH" : ""); }
     }
 
     internal sealed class Settings
@@ -77,7 +77,11 @@ namespace SwarlexEasyDpi
         public int Config = 0;            // en son calisan ayar (Configs.List sirasi)
         public bool AutoConnect = true;   // acilista ve ag degisince baglan
         public string Lang;               // null = Windows'un dili
-        const int Version = 3;            // ayar listesi degisince eski indeks gecersiz
+        public bool AutoUpdate = true;    // 6 saatte bir GitHub'a bak
+        public bool Animation = true;     // panel/menu kayarak acilir
+        public string Theme = "auto";     // auto | dark | light
+        public bool KeepIcon = true;      // simge saatin yaninda (^ okunun arkasinda degil)
+        const int Version = 4;            // ayar listesi degisince eski indeks gecersiz
 
         public static Settings Load()
         {
@@ -86,6 +90,7 @@ namespace SwarlexEasyDpi
             {
                 if (!File.Exists(Paths.Settings)) return s;
                 var kv = new Dictionary<string, string>();
+                bool migrated = false;
                 foreach (string raw in File.ReadAllLines(Paths.Settings, Encoding.UTF8))
                 {
                     int eq = raw.IndexOf('=');
@@ -100,10 +105,15 @@ namespace SwarlexEasyDpi
                 {
                     // eski bicim: bir kez tasi ve yeni bicimde yaz (proxy geri alma her acilista tekrarlanmasin)
                     MigrateV1(kv);
-                    s.Save();
+                    migrated = true;
                 }
                 if (kv.TryGetValue("auto_connect", out v)) s.AutoConnect = v != "0";
                 if (kv.TryGetValue("lang", out v) && Strings.Has(v)) s.Lang = v;
+                if (kv.TryGetValue("auto_update", out v)) s.AutoUpdate = v != "0";
+                if (kv.TryGetValue("animation", out v)) s.Animation = v != "0";
+                if (kv.TryGetValue("theme", out v) && (v == "auto" || v == "dark" || v == "light")) s.Theme = v;
+                if (kv.TryGetValue("keep_icon", out v)) s.KeepIcon = v != "0";
+                if (migrated) s.Save();   // yeni bicimde, okunan tercihlerle birlikte
             }
             catch (Exception ex) { Log.Write("Ayarlar okunamadi: " + ex.Message); }
             return s;
@@ -141,6 +151,10 @@ namespace SwarlexEasyDpi
                         "version=" + Version + Environment.NewLine +
                         "config=" + Config + Environment.NewLine +
                         "auto_connect=" + (AutoConnect ? "1" : "0") + Environment.NewLine +
+                        "auto_update=" + (AutoUpdate ? "1" : "0") + Environment.NewLine +
+                        "animation=" + (Animation ? "1" : "0") + Environment.NewLine +
+                        "theme=" + Theme + Environment.NewLine +
+                        "keep_icon=" + (KeepIcon ? "1" : "0") + Environment.NewLine +
                         (Lang != null ? "lang=" + Lang + Environment.NewLine : ""), Encoding.UTF8);
                 }
             }
@@ -164,11 +178,14 @@ namespace SwarlexEasyDpi
         // Dogrulama: tm4to/easydpi gibi Discord'un acik API'si 200 donmeli (DNS + TLS + DPI ucu birden).
         const string ProbeUrl = "https://discord.com/api/v10/gateway";
 
-        static readonly string[] Files = { "goodbyedpi.exe", "WinDivert.dll", "WinDivert64.sys" };
+        static readonly string[] Files = { "gdpi.dll", "WinDivert.dll", "WinDivert64.sys" };
 
         readonly object gate = new object();
         readonly Settings settings;
-        Process proc;
+        GdpiRun proc;       // uygulama icindeki GoodbyeDPI calismasi (ayri surec yok)
+        bool stuck;         // onceki calisma durmadiysa yenisi baslatilmaz (GoodbyeDPI tek ornekli)
+        GdpiRun stuckRun;   // o calisma sonunda biterse stuck temizlenir
+        bool dohOn;         // sifreli DNS su an gercekten calisiyor mu
         int gen;            // her Connect/Stop'ta artar; eski arka plan isleri kendini iptal eder
         int crashes;
         DateTime startedAt;
@@ -200,7 +217,7 @@ namespace SwarlexEasyDpi
                 }
             }
             // ilk surumden kalanlar (artik kullanilmiyor)
-            foreach (var old in new[] { "ciadpi.exe", "doh.ps1" })
+            foreach (var old in new[] { "ciadpi.exe", "doh.ps1", "goodbyedpi.exe" })
             {
                 string p = Path.Combine(Paths.Bin, old);
                 try { if (File.Exists(p)) { File.Delete(p); Log.Write("Eski dosya silindi: " + p); } } catch (Exception) { }
@@ -263,27 +280,6 @@ namespace SwarlexEasyDpi
             return sb.ToString();
         }
 
-        // Konsol penceresi acmadan baslatir (easydpi "start" ile gorunur pencere aciyordu).
-        static Process Spawn(string exe, IEnumerable<string> args)
-        {
-            var parts = new List<string>();
-            foreach (string a in args) parts.Add(Quote(a));
-            var psi = new ProcessStartInfo(exe, string.Join(" ", parts))
-            {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true,
-                WorkingDirectory = Path.GetDirectoryName(exe),
-            };
-            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            p.Start();
-            Job.Add(p);
-            p.OutputDataReceived += delegate(object s, DataReceivedEventArgs e) { };
-            p.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e) { if (e.Data != null) Log.Write("  goodbyedpi: " + e.Data); };
-            p.BeginOutputReadLine();
-            p.BeginErrorReadLine();
-            return p;
-        }
-
         // Uygulama icinde HTTP istegi: harici curl yok (yonetici olarak calisan curl, kullanicinin
         // yazabildigi %APPDATA%\_curlrc dosyasini okurdu). Proxy kullanilmaz; DNS onbellegi tutulmaz
         // ki ayar degisince eski (zehirli) cevap kullanilmasin.
@@ -329,6 +325,34 @@ namespace SwarlexEasyDpi
 
         [DllImport("dnsapi.dll")] static extern bool DnsFlushResolverCache();
 
+        // Turk Telekom engel sayfasi (Shroudly'de de yerlesik). Zehirli DNS cevaplari bunu ya da bogon dondurur.
+        static readonly string[] BlockPages = { "195.175.254.2" };
+
+        // Sistem DNS'i discord.com icin engel sayfasi / bogon donduruyor mu? (3 sn sinir)
+        public static bool DnsPoisoned()
+        {
+            try
+            {
+                try { DnsFlushResolverCache(); } catch (Exception) { }
+                var t = System.Threading.Tasks.Task.Run(() => Dns.GetHostAddresses("discord.com"));
+                if (!t.Wait(3000)) return false;
+                foreach (var a in t.Result)
+                {
+                    if (a.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                    if (Array.IndexOf(BlockPages, a.ToString()) >= 0 || IsBogon(a.GetAddressBytes())) return true;
+                }
+            }
+            catch (Exception) { }
+            return false;
+        }
+
+        static bool IsBogon(byte[] b)
+        {
+            return b[0] == 0 || b[0] == 10 || b[0] == 127 || (b[0] == 169 && b[1] == 254) ||
+                   (b[0] == 172 && (b[1] & 0xF0) == 16) || (b[0] == 192 && b[1] == 168) ||
+                   (b[0] == 100 && (b[1] & 0xC0) == 64) || b[0] >= 224;
+        }
+
         // ---- baglan / kes ----
 
         // Kayitli ayardan baslayarak her ayari dener; Discord yanit verince orada kalir.
@@ -358,20 +382,29 @@ namespace SwarlexEasyDpi
             Raise(my, State.Connecting, new Info());
             var order = new List<int> { settings.Config };
             for (int i = 0; i < Configs.List.Length; i++) if (i != settings.Config) order.Add(i);
+            // ISS DNS'i zehirliyse (engel sayfasi / bogon cevabi) DNS'siz ayarlar zaten basarisiz olur:
+            // sifreli DNS'li ayarlari one al (kayitli ayar sifreli DNS'li degilse).
+            if (!Configs.Doh[settings.Config] && DnsPoisoned())
+            {
+                Log.Write("Sistem DNS'i zehirli gorunuyor; sifreli DNS'li ayarlar once deneniyor");
+                var doh = order.FindAll(delegate(int x) { return Configs.Doh[x]; });
+                doh.AddRange(order.FindAll(delegate(int x) { return !Configs.Doh[x]; }));
+                order = doh;
+            }
 
             for (int n = 0; n < order.Count; n++)
             {
                 int c = order[n];
                 if (!Alive(my)) return;
                 Raise(my, State.Connecting, n == 0 ? new Info() : new Info { Try = n + 1, Total = order.Count });
-                Log.Write("Deneniyor: " + Configs.List[c]);
+                Log.Write("Deneniyor: " + Configs.Describe(c));
                 if (!StartConfig(my, c)) continue;
                 Thread.Sleep(1200); // WinDivert filtresi ~1 sn icinde devrede
                 if (!Running(my)) { Log.Write("goodbyedpi kapandi"); continue; }
                 try { DnsFlushResolverCache(); } catch (Exception) { }
-                if (!Probe()) { Log.Write("Dogrulanamadi: " + Configs.List[c]); continue; }
+                if (!Probe()) { Log.Write("Dogrulanamadi: " + Configs.Describe(c)); continue; }
                 if (settings.Config != c) { settings.Config = c; settings.Save(); }
-                string dns = Configs.DnsName(c);
+                string dns = dohOn ? Configs.DnsName(c) : null;
                 // dogrulama surerken surec olmus olabilir: kontrol ve durum ayni kilit altinda
                 // (arada olurse HandleExit "baglaniyor" gorup sessiz kalirdi)
                 lock (gate)
@@ -380,7 +413,7 @@ namespace SwarlexEasyDpi
                     if (proc == null || proc.HasExited) { Log.Write("goodbyedpi dogrulamadan sonra kapandi"); continue; }
                     Raise(my, State.On, new Info { Dns = dns });
                 }
-                Log.Write("Baglandi: " + Configs.List[c]);
+                Log.Write("Baglandi: " + Configs.Describe(c));
                 return;
             }
 
@@ -389,7 +422,7 @@ namespace SwarlexEasyDpi
             if (StartConfig(my, settings.Config))
             {
                 Thread.Sleep(1000);
-                string dns = Configs.DnsName(settings.Config);
+                string dns = dohOn ? Configs.DnsName(settings.Config) : null;
                 lock (gate)
                 {
                     if (my != gen) return;
@@ -412,9 +445,18 @@ namespace SwarlexEasyDpi
                 KillLocked();
                 try
                 {
-                    proc = Spawn(Paths.Gdpi, Configs.Args(c));
+                    if (stuck) { Log.Write("Onceki GoodbyeDPI calismasi durmadi; yeniden baslatma gerekli"); return false; }
+                    var run = new GdpiRun(Configs.Args(c));
+                    run.Finished += OnExited;
+                    proc = run;
                     startedAt = DateTime.Now;
-                    proc.Exited += OnExited;
+                    run.Start();
+                    if (Configs.Doh[c])
+                    {
+                        int e = Gdpi.DnsStart();
+                        dohOn = e == 0;
+                        if (e != 0) Log.Write("Sifreli DNS baslatilamadi (kod " + e + "); sistem DNS'i kullaniliyor");
+                    }
                     return true;
                 }
                 catch (Exception ex) { Log.Write("goodbyedpi baslatilamadi: " + ex.Message); proc = null; return false; }
@@ -425,53 +467,57 @@ namespace SwarlexEasyDpi
 
         bool Running(int my)
         {
-            Process p;
-            lock (gate) { if (my != gen) return false; p = proc; }
-            // HasExited kilit disinda: .NET Framework Exited olayini cagiran is parcaciginda tetikleyebilir.
-            return p != null && !p.HasExited;
+            lock (gate) return my == gen && proc != null && !proc.HasExited;
         }
 
-        // Process'in kendi kilidi tutulurken gate'i beklememek icin is kuyruga alinir (kilitlenme onlemi).
-        void OnExited(object sender, EventArgs e)
+        // Calisma is parcacigindan gelir; gate'i orada beklememek icin kuyruga alinir
+        // (KillLocked gate altinda bu is parcacigini bekleyebilir).
+        void OnExited(GdpiRun run)
         {
-            ThreadPool.QueueUserWorkItem(delegate { HandleExit((Process)sender); });
+            ThreadPool.QueueUserWorkItem(delegate { HandleExit(run); });
         }
 
-        void HandleExit(Process sender)
+        void HandleExit(GdpiRun sender)
         {
+            lock (gate) if (stuck && sender == stuckRun) { stuck = false; stuckRun = null; Log.Write("Takilan GoodbyeDPI calismasi sonunda durdu"); }
             int my, n;
             lock (gate)
             {
                 if (sender != proc) return; // bilerek kapatildi ya da degistirildi (KillLocked birakir)
                 proc = null;
                 my = gen;
-                if (current != State.On && current != State.Unverified) { sender.Dispose(); return; } // deneme sirasinda: Connect ilerler
-                int code = -1; try { code = sender.ExitCode; } catch (Exception) { }
-                Log.Write("goodbyedpi beklenmedik sekilde kapandi (kod " + code + ")");
-                sender.Dispose();
+                if (current != State.On && current != State.Unverified) return; // deneme sirasinda: Connect ilerler
+                Log.Write("GoodbyeDPI beklenmedik sekilde durdu (kod " + sender.Code + ")");
                 if ((DateTime.Now - startedAt).TotalMinutes > 5) crashes = 0;
                 n = ++crashes;
             }
             if (n <= 3)
                 ThreadPool.QueueUserWorkItem(delegate { Thread.Sleep(1500); Connect(false, my); });
-            else Raise(my, State.Error, new Info { Error = "errStopped" });
+            else
+            {
+                lock (gate) { if (my == gen) { Gdpi.DnsStop(); dohOn = false; } }
+                Raise(my, State.Error, new Info { Error = "errStopped" });
+            }
         }
 
         public void Stop()
         {
             int my;
-            lock (gate) { my = ++gen; crashes = 0; KillLocked(); }
-            Raise(my, State.Off, new Info());
+            bool st;
+            lock (gate) { my = ++gen; crashes = 0; KillLocked(); st = stuck; }
+            Raise(my, st ? State.Error : State.Off, st ? new Info { Error = "errStuck" } : new Info());
         }
 
         void KillLocked()
         {
+            // Sifreli DNS once ve her durumda: GoodbyeDPI kendiliginden durduysa proc zaten null olur.
+            Gdpi.DnsStop();
+            dohOn = false;
             var p = proc;
             proc = null;
             if (p == null) return;
-            // Exited olayi kuyruga alindigi icin burada beklemek kilitlenme yaratmaz.
-            try { if (!p.HasExited) { p.Kill(); p.WaitForExit(5000); } } catch (Exception) { }
-            p.Dispose();
+            // Finished olayi kuyruga alindigi icin burada beklemek kilitlenme yaratmaz.
+            if (!p.StopAndWait(5000)) { stuck = true; stuckRun = p; Log.Write("GoodbyeDPI 5 sn icinde durmadi"); }
         }
 
         // Durum ve bildirim ayni kilit altinda: gec kalan eski bir "Baglaniyor" yeni "Kapali"nin ustune yazamaz.
@@ -487,7 +533,7 @@ namespace SwarlexEasyDpi
                 if (was == State.Unverified)
                     lock (gate)
                         if (my == gen && current == State.Unverified && proc != null && !proc.HasExited)
-                            Raise(my, State.On, new Info { Dns = Configs.DnsName(settings.Config) });
+                            Raise(my, State.On, new Info { Dns = dohOn ? Configs.DnsName(settings.Config) : null });
                 return;
             }
             Log.Write("Ag degisikliginden sonra baglanti yok; yeniden baglaniliyor");
@@ -504,5 +550,103 @@ namespace SwarlexEasyDpi
                 if (h != null) h(st, info);
             }
         }
+    }
+
+    // GoodbyeDPI'nin uygulama icindeki bir calismasi: gdpi.dll'deki gdpi_run bir is parcaciginda
+    // engelleyerek calisir; gdpi_stop ile durur. Gorev Yoneticisi'nde ayri bir surec gorunmez.
+    internal sealed class GdpiRun
+    {
+        readonly Thread thread;
+        volatile bool done;
+        public int Code;                       // 0 = durduruldu, >0 GoodbyeDPI hata kodu, -1 beklenmeyen, -2 cokme
+        public event Action<GdpiRun> Finished;
+
+        public GdpiRun(List<string> args)
+        {
+            var argv = new List<string> { "goodbyedpi" };
+            argv.AddRange(args);
+            var arr = argv.ToArray();
+            thread = new Thread(delegate()
+            {
+                try { Code = Gdpi.Run(arr); }
+                catch (Exception ex) { Log.Write("GoodbyeDPI hatasi: " + ex.Message); Code = -2; }
+                done = true;
+                var h = Finished;
+                if (h != null) h(this);
+            }) { IsBackground = true, Name = "GoodbyeDPI", Priority = ThreadPriority.AboveNormal };
+        }
+
+        public bool HasExited { get { return done; } }
+
+        // Durdurma bayragi is parcacigi baslamadan sifirlanir: baslarken gelen Stop kaybolmaz.
+        public void Start() { Gdpi.Prepare(); thread.Start(); }
+
+        // Durdur ve bitmesini bekle; sure dolarsa false.
+        public bool StopAndWait(int ms)
+        {
+            if (done) return true;
+            Gdpi.Stop();
+            return thread.Join(ms);
+        }
+    }
+
+    // gdpi.dll (native\goodbyedpi\engine.c): Program Files\bin'den yuklenir; bagimliligi WinDivert.dll
+    // ayni klasorden, digerleri yalniz System32'den aranir.
+    internal static class Gdpi
+    {
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        delegate int RunFn(int argc, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPStr)] string[] argv);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        delegate void StopFn();
+
+        static readonly object gate = new object();
+        public static string DllPath = Paths.GdpiDll;   // testler derleme klasorunu verir
+        static IntPtr module;
+        static RunFn run;
+        static StopFn stop;
+        static StopFn prepare;
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int DnsStartFn();
+        static DnsStartFn dnsStart;
+        static StopFn dnsStop;
+
+        static void Load()
+        {
+            lock (gate)
+            {
+                if (module != IntPtr.Zero) return;
+                IntPtr m = LoadLibraryEx(DllPath, IntPtr.Zero, 0x100 | 0x800); // DLL_LOAD_DIR | SYSTEM32
+                if (m == IntPtr.Zero) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "gdpi.dll yuklenemedi");
+                IntPtr r = GetProcAddress(m, "gdpi_run"), s = GetProcAddress(m, "gdpi_stop");
+                if (r == IntPtr.Zero || s == IntPtr.Zero) throw new EntryPointNotFoundException("gdpi.dll eksik");
+                run = (RunFn)Marshal.GetDelegateForFunctionPointer(r, typeof(RunFn));
+                stop = (StopFn)Marshal.GetDelegateForFunctionPointer(s, typeof(StopFn));
+                IntPtr pr = GetProcAddress(m, "gdpi_prepare");
+                if (pr == IntPtr.Zero) throw new EntryPointNotFoundException("gdpi.dll eksik (prepare)");
+                prepare = (StopFn)Marshal.GetDelegateForFunctionPointer(pr, typeof(StopFn));
+                IntPtr ds = GetProcAddress(m, "dns_start"), dt = GetProcAddress(m, "dns_stop");
+                if (ds == IntPtr.Zero || dt == IntPtr.Zero) throw new EntryPointNotFoundException("gdpi.dll eksik (dns)");
+                dnsStart = (DnsStartFn)Marshal.GetDelegateForFunctionPointer(ds, typeof(DnsStartFn));
+                dnsStop = (StopFn)Marshal.GetDelegateForFunctionPointer(dt, typeof(StopFn));
+                module = m;
+            }
+        }
+
+        public static int Run(string[] argv)
+        {
+            Load();
+            var withNull = new string[argv.Length + 1];   // C'deki gibi argv[argc] == NULL
+            Array.Copy(argv, withNull, argv.Length);
+            return run(argv.Length, withNull);
+        }
+
+        public static void Stop() { var s = stop; if (s != null) s(); }
+        public static void Prepare() { Load(); prepare(); }
+
+        // Sifreli DNS (dns.c): 0 ya da Windows hata kodu. Durdurma, calismiyorsa bir sey yapmaz.
+        public static int DnsStart() { Load(); return dnsStart(); }
+        public static void DnsStop() { var s = dnsStop; if (s != null) s(); }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi)] static extern IntPtr GetProcAddress(IntPtr module, string name);
     }
 }

@@ -9,3 +9,6 @@
 
 int main(int argc, char *argv[]);
 void deinit_all();
+#ifdef GDPI_EMBED
+int gdpi_should_stop(void);   /* engine.c */
+#endif

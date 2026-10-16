@@ -198,6 +198,34 @@ namespace SwarlexEasyDpi
         struct NOTIFYICONIDENTIFIER { public uint cbSize; public IntPtr hWnd; public uint uID; public Guid guidItem; }
         [System.Runtime.InteropServices.DllImport("shell32.dll")] static extern int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER id, out RECT r);
 
+        // Windows 11 yeni simgeleri ^ okunun arkasina koyar. Kullanici "saatin yaninda tut" dediyse
+        // HKCU\Control Panel\NotifyIconSettings altindaki kaydimizi one alir (SwarlexBattery'den).
+        // Degistiyse true: Explorer ayari simge eklenirken okur, simge yeniden eklenir.
+        public bool SetPromoted(bool on)
+        {
+            bool changed = false;
+            try
+            {
+                using (var root = Registry.CurrentUser.OpenSubKey(@"Control Panel\NotifyIconSettings"))
+                {
+                    if (root == null) return false;
+                    string me = Paths.InstalledExe, leaf = "\\" + Path.GetFileName(me);
+                    foreach (var name in root.GetSubKeyNames())
+                        using (var k = root.OpenSubKey(name, true))
+                        {
+                            if (k == null) continue;
+                            var exe = k.GetValue("ExecutablePath") as string;
+                            if (exe == null || !(string.Equals(exe, me, StringComparison.OrdinalIgnoreCase) || exe.EndsWith(leaf, StringComparison.OrdinalIgnoreCase))) continue;
+                            var v = k.GetValue("IsPromoted"); int want = on ? 1 : 0;
+                            if (!(v is int && (int)v == want)) { k.SetValue("IsPromoted", want, RegistryValueKind.DWord); changed = true; }
+                        }
+                }
+                if (changed) { icon.Visible = false; icon.Visible = true; }
+            }
+            catch (Exception ex) { Log.Write("Simge ayari: " + ex.Message); }
+            return changed;
+        }
+
         public void Balloon(string text) { icon.ShowBalloonTip(4000, "SwarlexEasyDpi", text, ToolTipIcon.Info); }
 
         Icon Get(State st, int f)

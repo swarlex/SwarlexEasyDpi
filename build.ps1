@@ -90,15 +90,15 @@ foreach ($ad in $WinDivertDosya.Keys) {
 
 $sertlik = @('-O2', '-D_FORTIFY_SOURCE=2', '-fstack-protector', '-Wl,--dynamicbase,--nxcompat,--high-entropy-va', '-s')
 
-Adim 'GoodbyeDPI derleniyor (native\goodbyedpi)'
-$gsrc = Join-Path $Kok 'native\goodbyedpi'
-$rcObj = Join-Path $Bld 'gdpi\rc.o'
-Push-Location $gsrc
+Adim 'GoodbyeDPI motoru derleniyor (native\goodbyedpi -> gdpi.dll, uygulama icinde calisir)'
+# engine.c, goodbyedpi.c'yi dahil eder ve gdpi_run/gdpi_stop disa acar; service.c gerekmez.
+Push-Location (Join-Path $Kok 'native\goodbyedpi')
 try {
-    Calistir $rc @('goodbyedpi-rc.rc', '-o', $rcObj)
-    $cdosya = @(Get-ChildItem -Filter *.c | ForEach-Object { $_.Name }) + @(Get-ChildItem utils -Filter *.c | ForEach-Object { "utils\$($_.Name)" })
-    Calistir $cc (@('-std=c99', '-Wall', '-Wno-unused', "-I$(Join-Path $Kok 'native\windivert')") + $cdosya + @($rcObj,
-        "-L$(Join-Path $wd 'x64')", '-lWinDivert', '-lws2_32') + $sertlik + @('-o', (Join-Path $Bld 'gdpi\goodbyedpi.exe')))
+    $cdosya = 'engine.c', 'dns.c', 'blackwhitelist.c', 'dnsredir.c', 'fakepackets.c', 'ttltrack.c', 'utils\getline.c', 'utils\repl_str.c'
+    # -Dexit=gdpi_exit: GoodbyeDPI'nin (dnsredir.c, uthash dahil) her exit() cagrisi uygulamayi degil
+    # yalniz o calismayi bitirir (engine.c longjmp ile geri doner).
+    Calistir $cc (@('-std=gnu99', '-shared', '-DGDPI_EMBED', '-Dexit=gdpi_exit', '-Wall', '-Wno-unused', "-I$(Join-Path $Kok 'native\windivert')") + $cdosya + @(
+        "-L$(Join-Path $wd 'x64')", '-lWinDivert', '-lws2_32', '-lwinhttp') + $sertlik + @('-o', (Join-Path $Bld 'gdpi\gdpi.dll')))
 } finally { Pop-Location }
 
 $app = Join-Path $Kok 'app'
@@ -127,7 +127,7 @@ Calistir $iconTool @($ico)
 
 Adim "SwarlexEasyDpi.exe v$surum"
 $gom = @(
-    "-resource:$(Join-Path $Bld 'gdpi\goodbyedpi.exe'),goodbyedpi.exe"
+    "-resource:$(Join-Path $Bld 'gdpi\gdpi.dll'),gdpi.dll"
     "-resource:$(Join-Path $Bld 'gdpi\WinDivert.dll'),WinDivert.dll"
     "-resource:$(Join-Path $Bld 'gdpi\WinDivert64.sys'),WinDivert64.sys"
     "-resource:$(Join-Path $Kok 'lang\tr.json'),lang.tr.json"
@@ -148,6 +148,12 @@ if ($Test) {
     Calistir $Csc ($ortak + @('-target:exe', "-out:$t") + $ref + $gom + $ortakKaynak + @((Join-Path $Kok 'tests\Tests.cs'), $asmInfo))
     Calistir $t @((Join-Path $Bld 'app'))
 }
+
+# Lisanslar surumle birlikte dagitilir (Apache-2.0 / LGPL ikili dosyayla birlikte metin ister).
+$lisans = foreach ($f in 'LICENSE', 'docs\THIRD_PARTY_NOTICES.md', 'native\goodbyedpi\LICENSE', 'native\windivert\LICENSE') {
+    "===== $f ====="; Get-Content -LiteralPath (Join-Path $Kok $f) -Raw; ""
+}
+Set-Content -LiteralPath (Join-Path $Dist 'LICENSES.txt') -Value ($lisans -join [Environment]::NewLine) -Encoding UTF8
 
 # Guncelleyici her surumde bu dosyayla karsilastirir.
 $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()

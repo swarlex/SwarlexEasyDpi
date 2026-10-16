@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-label="SwarlexEasyDpi - one-click DPI bypass for Windows">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B0F14"/><stop offset="1" stop-color="#0E1418"/></linearGradient>
+    <radialGradient id="g1" cx="0.12" cy="0.1" r="0.55"><stop offset="0" stop-color="#3FD16A" stop-opacity=".30"/><stop offset="1" stop-color="#3FD16A" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g2" cx="0.82" cy="0.55" r="0.42"><stop offset="0" stop-color="#3FD16A" stop-opacity=".22"/><stop offset="1" stop-color="#3FD16A" stop-opacity="0"/></radialGradient>
+    <radialGradient id="g3" cx="0.55" cy="1.05" r="0.5"><stop offset="0" stop-color="#5865F2" stop-opacity=".20"/><stop offset="1" stop-color="#5865F2" stop-opacity="0"/></radialGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#36383E"/><stop offset="1" stop-color="#16171A"/></linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#B8F0C8"/></linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#FFFFFF" stroke-opacity=".045"/></pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+    <clipPath id="clip"><rect width="1280" height="420" rx="18"/></clipPath>
+  </defs>
+  <style>.s{font-family:&quot;Segoe UI Variable Display&quot;,&quot;Segoe UI&quot;,system-ui,-apple-system,&quot;Helvetica Neue&quot;,Arial,sans-serif}</style>
+  <g clip-path="url(#clip)">
+    <rect width="1280" height="420" fill="url(#bg)"/><rect width="1280" height="420" fill="url(#grid)"/>
+    <rect width="1280" height="420" fill="url(#g1)"/><rect width="1280" height="420" fill="url(#g2)"/><rect width="1280" height="420" fill="url(#g3)"/>
+
+    <!-- uygulama simgesi: koyu karo, yesil halka, beyaz kalkan -->
+    <rect x="72" y="76" width="84" height="84" rx="20" fill="url(#tile)" stroke="#FFFFFF" stroke-opacity=".12"/>
+    <circle cx="114" cy="118" r="25" fill="none" stroke="#3FD16A" stroke-width="7"/>
+    <path d="M114 103l13 5c0 11-4 19-13 24c-9-5-13-13-13-24z" fill="#F5F5F5"/>
+
+    <text class="s" x="72" y="236" font-size="64" font-weight="700" fill="url(#title)" letter-spacing="-1">SwarlexEasyDpi</text>
+    <text class="s" x="74" y="280" font-size="22" fill="#A7B3AE">One click, and blocked sites open again - system-wide.</text>
+
+    <rect x="72" y="316" width="132" height="40" rx="20" fill="#FFFFFF" fill-opacity=".06" stroke="#5865F2" stroke-opacity=".6"/>
+    <circle cx="94" cy="336" r="6" fill="#5865F2"/>
+    <text class="s" x="110" y="342" font-size="16" font-weight="600" fill="#E8F0EC">Discord</text>
+    <rect x="216" y="316" width="128" height="40" rx="20" fill="#FFFFFF" fill-opacity=".06" stroke="#E2231A" stroke-opacity=".6"/>
+    <circle cx="238" cy="336" r="6" fill="#E2231A"/>
+    <text class="s" x="254" y="342" font-size="16" font-weight="600" fill="#E8F0EC">Roblox</text>
+    <rect x="356" y="316" width="212" height="40" rx="20" fill="#FFFFFF" fill-opacity=".06" stroke="#3FD16A" stroke-opacity=".6"/>
+    <circle cx="378" cy="336" r="6" fill="#3FD16A"/>
+    <text class="s" x="394" y="342" font-size="16" fill="#E8F0EC"><tspan font-weight="600">and the rest</tspan><tspan fill="#8C9A94"> · any app</tspan></text>
+
+    <!-- panel: buyuk ac/kapa dugmesi -->
+    <rect x="852" y="58" width="320" height="304" rx="12" fill="#202020" stroke="#FFFFFF" stroke-opacity=".08"/>
+    <circle cx="884" cy="96" r="10" fill="none" stroke="#3FD16A" stroke-width="3"/>
+    <text class="s" x="904" y="102" font-size="17" font-weight="600" fill="#FFFFFF">SwarlexEasyDpi</text>
+    <circle cx="1012" cy="196" r="60" fill="#3FD16A" opacity=".35" filter="url(#glow)"/>
+    <circle cx="1012" cy="196" r="66" fill="none" stroke="#FFFFFF" stroke-opacity=".12" stroke-width="7"/>
+    <circle cx="1012" cy="196" r="66" fill="none" stroke="#3FD16A" stroke-width="7"/>
+    <circle cx="1012" cy="196" r="51" fill="#2C2C2C"/>
+    <path d="M1000 181a19 19 0 1 0 24 0" fill="none" stroke="#3FD16A" stroke-width="5" stroke-linecap="round"/>
+    <path d="M1012 172v22" stroke="#3FD16A" stroke-width="5" stroke-linecap="round"/>
+    <text class="s" x="1012" y="304" font-size="22" font-weight="600" fill="#FFFFFF" text-anchor="middle">On</text>
+    <text class="s" x="1012" y="330" font-size="14" fill="#A0A0A0" text-anchor="middle">DPI blocking is bypassed system-wide</text>
+  </g>
+</svg>

@@ -48,6 +48,7 @@ try { & (Join-Path $root 'build.ps1') -Test }
 catch { Set-Content -LiteralPath $vf -Value "$cur" -Encoding ASCII; throw "Build failed, nothing was published: $_" }
 $exe = Join-Path $root 'dist\SwarlexEasyDpi.exe'
 $sha = "$exe.sha256"
+$lic = Join-Path $root 'dist\LICENSES.txt'
 
 # 3. commit on a release branch, pull request, merge into main
 $msg = "v$Version`: $Notes"
@@ -78,7 +79,7 @@ if (Test-Path -LiteralPath $log) {
 }
 $notesFile = Join-Path ([IO.Path]::GetTempPath()) "swarlexeasydpi-notes-$Version.md"
 Set-Content -LiteralPath $notesFile -Value $body -Encoding UTF8
-& $gh release create "v$Version" $exe $sha --repo $Repo --title "v$Version" --notes-file $notesFile --target main
+& $gh release create "v$Version" $exe $sha $lic --repo $Repo --title "v$Version" --notes-file $notesFile --target main
 $rc = $LASTEXITCODE
 Remove-Item -LiteralPath $notesFile -Force -ErrorAction SilentlyContinue
 if ($rc -ne 0) { throw 'gh release create failed' }
