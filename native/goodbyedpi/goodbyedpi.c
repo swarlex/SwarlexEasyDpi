@@ -26,7 +26,12 @@ WINSOCK_API_LINKAGE INT WSAAPI inet_pton(INT Family, LPCSTR pStringBuf, PVOID pA
 
 #define GOODBYEDPI_VERSION "v0.2.3rc3"
 
+#ifdef GDPI_EMBED
+/* SwarlexEasyDpi: uygulama icinde calisirken 20 sn bekleme yok; exit() engine.c'de yakalanir */
+#define die() exit(EXIT_FAILURE)
+#else
 #define die() do { sleep(20); exit(EXIT_FAILURE); } while (0)
+#endif
 
 #define MAX_FILTERS 4
 
@@ -1171,6 +1176,11 @@ int main(int argc, char *argv[]) {
     }
     printf("Filter activated, GoodbyeDPI is now running!\n");
     signal(SIGINT, sigint_handler);
+#ifdef GDPI_EMBED
+    /* SwarlexEasyDpi: filtreler acilirken durdurma istendiyse donguye girme */
+    if (gdpi_should_stop())
+        return 0;
+#endif
 
     while (1) {
         if (WinDivertRecv(w_filter, packet, sizeof(packet), &packetLen, &addr)) {
@@ -1560,4 +1570,5 @@ int main(int argc, char *argv[]) {
             break;
         }
     }
+    return 0; /* SwarlexEasyDpi: dongu bitince (gdpi_stop) duzgun don */
 }

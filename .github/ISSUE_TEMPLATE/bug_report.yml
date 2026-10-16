@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in SwarlexEasyDpi does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The log below answers most questions up front.
+  - type: dropdown
+    id: area
+    attributes:
+      label: What does not work?
+      options:
+        - A site or app stays blocked
+        - The connection drops / the icon is orange or red
+        - The panel or the menu
+        - Start with Windows
+        - Updates
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead? Which site or app?
+    validations:
+      required: true
+  - type: input
+    id: isp
+    attributes:
+      label: Country and internet provider
+      description: Blocking differs between providers (e.g. Turkey - Türk Telekom, Superonline, Turkcell).
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Right-click the tray icon > **Diagnostics…** opens `kayit.txt`. Paste the lines from around the time it went wrong.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the menu (e.g. "Up to date (v1.1.0)").
+    validations:
+      required: true

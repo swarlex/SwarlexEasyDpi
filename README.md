@@ -1,109 +1,124 @@
-<p align="center">
-  <img src="docs/images/icon.png" width="96" alt="SwarlexEasyDpi">
-</p>
+<div align="center">
 
-<h1 align="center">SwarlexEasyDpi</h1>
+<img src="docs/banner.svg" alt="SwarlexEasyDpi - one-click DPI bypass for Windows" width="100%">
 
-<p align="center">
-  <a href="https://github.com/swarlex/SwarlexEasyDpi/releases/latest"><img src="https://img.shields.io/github/v/release/swarlex/SwarlexEasyDpi?style=flat-square&label=release&color=3fd16a&cacheSeconds=300" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square" alt="Windows 10 | 11">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/swarlex/SwarlexEasyDpi?style=flat-square" alt="License: GPL-3.0"></a>
-</p>
+<br>
 
-<p align="center">
-  <a href="https://github.com/swarlex/SwarlexEasyDpi/releases/latest/download/SwarlexEasyDpi.exe"><b>⬇ Download SwarlexEasyDpi.exe</b></a>
-  <br>
-  <sub>One file · no install · updates itself</sub>
-</p>
+**One click, and Discord, Roblox and other blocked sites open again - for every app on your PC.**
 
-<p align="center"><a href="#english">English</a> · <a href="#türkçe">Türkçe</a></p>
+[![Latest release](https://img.shields.io/github/v/release/swarlex/SwarlexEasyDpi?label=release&color=3fd16a&cacheSeconds=600)](https://github.com/swarlex/SwarlexEasyDpi/releases/latest)
+[![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d6)
 
----
+### [⬇ Download SwarlexEasyDpi.exe](https://github.com/swarlex/SwarlexEasyDpi/releases/latest/download/SwarlexEasyDpi.exe)
 
-<p align="center">
-  <img src="docs/images/panel-on-dark.png" width="300" alt="The panel: one big on/off button">
-  &nbsp;&nbsp;
-  <img src="docs/images/menu-dark.png" width="270" alt="The right-click menu">
-</p>
+<sub>Single file · no installer · updates itself · English &amp; Türkçe</sub>
 
-## English
+[Quick start](#quick-start) · [Screenshots](#screenshots) · [Features](#features) · [FAQ](#faq) · [Türkçe](#türkçe) · [Changelog](docs/CHANGELOG.md)
 
-Bypasses DPI blocking (Discord, Roblox and other blocked sites) **system-wide**, from one small icon next
-to the clock. Built on [GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI), compiled from source.
+</div>
 
-- **One click:** it connects as soon as it starts. Left-click the icon for the panel (one big on/off
-  button), right-click for the menu.
-- **No settings to pick:** it tries the settings known to work in Turkey one after another, stays on the
-  first one that Discord answers through, and starts with that one next time.
-- **Stays connected:** after the network changes or the PC wakes up, it checks the connection again and
-  reconnects if needed (*Connect automatically*).
-- **Updates itself** from this page (SHA-256 checked). **English and Turkish.** Free and open source (GPL-3.0).
+<br>
 
-### Use
+SwarlexEasyDpi lives next to the clock. It gets around DPI blocking - the kind of filtering that blocks Discord,
+Roblox and other sites in Turkey and elsewhere - for the whole system: browsers, the Discord app and games
+alike. There is nothing to configure: it connects on its own and finds a working setting by itself.
 
-1. Download **SwarlexEasyDpi.exe** and run it. It asks for administrator rights once (the WinDivert
-   packet driver needs them) and copies itself to `C:\Program Files\SwarlexEasyDpi`.
-2. That's it: the icon turns green when the bypass is on. Right-click > *Start with Windows* to have it
-   start silently at every logon (no UAC prompt).
+## Quick start
 
-Icon: green ring = on, spinning = connecting, dim = off, orange = on but not verified, red = error.
+1. **[Download `SwarlexEasyDpi.exe`](https://github.com/swarlex/SwarlexEasyDpi/releases/latest/download/SwarlexEasyDpi.exe)**
+   and double-click it. If SmartScreen warns, choose *More info > Run anyway*.
+2. **Allow administrator rights** once - the packet filter driver needs them. The app copies itself to
+   `C:\Program Files\SwarlexEasyDpi` and runs from there.
+3. **That's it.** The icon next to the clock turns green when the bypass is on. Right-click > *Preferences* >
+   *Start with Windows* to have it start silently at every sign-in.
 
 > [!NOTE]
-> The exe is not code-signed: SmartScreen may warn on the first launch (*More info* > *Run anyway*), and
-> antivirus programs may flag GoodbyeDPI / WinDivert as a "HackTool" because it intercepts network packets.
-> You can [build it yourself](#building).
+> Windows 10 or 11 (64-bit). Antivirus programs may flag the packet filter (WinDivert) as a "HackTool"
+> because it intercepts network packets - that is how the bypass works. The exe is not code-signed; you can
+> [build it yourself](#building).
 
-### Credits
+## Screenshots
 
-| Project | Used for |
-|---|---|
-| [ValdikSS/GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI) | The engine (`native/goodbyedpi`, built from source) and its signed WinDivert driver |
-| [cagritaskn/GoodbyeDPI-Turkey](https://github.com/cagritaskn/GoodbyeDPI-Turkey), [Pudochu/goodbyedpi-turkey](https://github.com/Pudochu/goodbyedpi-turkey) | Settings for Turkey |
-| [tm4to/easydpi](https://github.com/tm4to/easydpi) | Try settings until Discord answers, remember the working one |
-| [swarlex/SwarlexBattery](https://github.com/swarlex/SwarlexBattery) | Tray icon, panel and menu, updater |
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/panel-on-dark.png" width="300" alt="The panel"><br><sub><b>Left click: the panel</b></sub></td>
+    <td align="center"><img src="docs/images/menu-dark.png" width="270" alt="The menu"><br><sub><b>Right click: the menu</b></sub></td>
+    <td align="center"><img src="docs/images/prefs-dark.png" width="270" alt="Preferences"><br><sub><b>Preferences</b></sub></td>
+  </tr>
+</table>
 
-### Building
+## Features
+
+- **One button.** Left-click the icon for the panel: a big on/off button that spins while connecting and glows
+  green when the bypass is on.
+- **Nothing to choose.** Turning it on tries the settings that are known to work in Turkey, one after another,
+  until Discord answers through it - and starts with the one that worked next time.
+- **Stays connected.** After the network changes or the PC wakes up, it checks again and reconnects if needed.
+- **One process.** The DPI engine runs inside the app itself: no extra programs, no services, no console windows.
+- **Updates itself** from this page, SHA-256 checked, with one click.
+- **Light and dark**, like your taskbar; **English and Turkish**; free and open source (GPL-3.0).
+
+## FAQ
+
+<details>
+<summary><b>Which sites does it open?</b></summary>
+
+All of them that are blocked by DPI (SNI filtering), for every app - not a list. It does not hide your IP
+address or what you do: it is not a VPN.
+</details>
+
+<details>
+<summary><b>Does it change my DNS?</b></summary>
+
+No setting is changed. If your provider also blocks by DNS, SwarlexEasyDpi answers DNS queries itself over
+encrypted DNS (DNS-over-HTTPS to Cloudflare, Google as fallback) while it is on; the panel then shows
+*DNS: DoH*. Turn it off and everything is as before.
+</details>
+
+<details>
+<summary><b>The icon is orange or red.</b></summary>
+
+Orange: the bypass is on, but Discord could not be reached to confirm it (often: no internet yet). It is checked
+again when the network changes. Red: right-click > *Diagnostics…* opens the log - attach it to a
+[bug report](https://github.com/swarlex/SwarlexEasyDpi/issues/new?template=bug_report.yml).
+</details>
+
+<details>
+<summary><b>How do I remove it?</b></summary>
+
+Right-click > *Preferences* > turn off *Start with Windows*, then *Exit*, and delete `C:\Program Files\SwarlexEasyDpi`.
+</details>
+
+## Building
 
 Nothing to install: the C# compiler that ships with Windows builds the app; the C compiler
-([llvm-mingw](https://github.com/mstorsjo/llvm-mingw)) and WinDivert are downloaded once, SHA-256 checked.
+([llvm-mingw](https://github.com/mstorsjo/llvm-mingw)) and the signed WinDivert driver are downloaded once,
+SHA-256 checked.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1 -Test
 ```
 
-Output: `dist\SwarlexEasyDpi.exe` and its `.sha256`. Releases are built by `tools\release.ps1`.
+Output: `dist\SwarlexEasyDpi.exe` and its `.sha256`. See [CONTRIBUTING](.github/CONTRIBUTING.md).
 
 ---
 
 ## Türkçe
 
-DPI engellerini (Discord, Roblox ve diğer engelli siteler) **tüm sistemde** aşar; saatin yanındaki küçük
-bir simgeden çalışır. Kaynaktan derlenen [GoodbyeDPI](https://github.com/ValdikSS/GoodbyeDPI) üzerine kuruludur.
+DPI engellerini (Discord, Roblox ve diğer engelli siteler) **tüm sistemde** aşar: tarayıcı, Discord uygulaması
+ve oyunlar dahil. Ayar yok: kendisi bağlanır, çalışan ayarı kendisi bulur.
 
-- **Tek tık:** açılır açılmaz bağlanır. Simgeye sol tık: panel (büyük aç/kapat düğmesi); sağ tık: menü.
-- **Ayar seçmek yok:** Türkiye'de çalıştığı bilinen ayarları sırayla dener, Discord'a ilk ulaşılan ayarda
-  kalır ve bir sonraki açılışta doğrudan onunla başlar.
-- **Bağlı kalır:** ağ değişince ya da bilgisayar uykudan uyanınca bağlantıyı yeniden dener
-  (*Otomatik bağlan*).
-- **Kendini günceller** (SHA-256 kontrollü). **Türkçe ve İngilizce.** Ücretsiz ve açık kaynak (GPL-3.0).
+1. **[SwarlexEasyDpi.exe'yi indirin](https://github.com/swarlex/SwarlexEasyDpi/releases/latest/download/SwarlexEasyDpi.exe)**
+   ve çift tıklayın (SmartScreen uyarırsa *Ek bilgi > Yine de çalıştır*).
+2. **Bir kez yönetici izni verin** (paket filtresi sürücüsü için). Program kendini
+   `C:\Program Files\SwarlexEasyDpi` klasörüne kopyalar.
+3. **Bu kadar.** Saatin yanındaki simge yeşilse açık. Sağ tık > *Tercihler* > *Windows ile başlat*.
 
-### Kullanım
-
-1. **SwarlexEasyDpi.exe**'yi indirip çalıştırın. Bir kez yönetici izni ister (WinDivert sürücüsü için) ve
-   kendini `C:\Program Files\SwarlexEasyDpi` klasörüne kopyalar.
-2. Bu kadar: atlatma açıkken simge yeşil olur. Sağ tık > *Windows ile başlat* ile her oturum açılışında
-   UAC sormadan, sessizce başlar.
-
-Simge: yeşil halka = açık, dönen = bağlanıyor, soluk = kapalı, turuncu = açık ama doğrulanamadı, kırmızı = hata.
-
-> [!NOTE]
-> Exe imzalı değil: SmartScreen ilk açılışta uyarabilir (*Ek bilgi* > *Yine de çalıştır*); antivirüsler
-> GoodbyeDPI / WinDivert'i ağ paketlerini yakaladığı için "HackTool" diye işaretleyebilir.
-> [Kendiniz derleyebilirsiniz](#building).
-
-Güvenlik incelemesi: [docs/GUVENLIK-RAPORU.md](docs/GUVENLIK-RAPORU.md) · [SECURITY.md](.github/SECURITY.md)
+Sol tık: büyük aç/kapat düğmeli panel. Sağ tık: menü (Dil, Tercihler, güncellemeler, tanılama).
+Simge: yeşil = açık, dönen = bağlanıyor, soluk = kapalı, turuncu = açık ama doğrulanamadı, kırmızı = hata.
 
 ## License
 
-GPL-3.0-or-later (code adapted from SwarlexBattery is GPL-3.0). GoodbyeDPI: Apache-2.0. WinDivert:
-LGPL-3.0 / GPL-2.0.
+GPL-3.0-or-later. The bundled third-party components keep their own licenses:
+[THIRD_PARTY_NOTICES](docs/THIRD_PARTY_NOTICES.md). Security: [SECURITY.md](.github/SECURITY.md).

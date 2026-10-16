@@ -12,57 +12,6 @@ namespace SwarlexEasyDpi
     [StructLayout(LayoutKind.Sequential)]
     internal struct RECT { public int Left, Top, Right, Bottom; }
 
-    // Uygulama cokse bile goodbyedpi arkada kalmasin: KILL_ON_JOB_CLOSE ile bir Job nesnesine baglanir.
-    internal static class Job
-    {
-        static IntPtr handle = IntPtr.Zero;
-
-        public static void Add(Process p)
-        {
-            if (handle == IntPtr.Zero)
-            {
-                handle = CreateJobObject(IntPtr.Zero, null);
-                var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
-                info.BasicLimitInformation.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-                int len = Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
-                IntPtr ptr = Marshal.AllocHGlobal(len);
-                try
-                {
-                    Marshal.StructureToPtr(info, ptr, false);
-                    if (!SetInformationJobObject(handle, 9, ptr, (uint)len)) throw new Win32Exception();
-                }
-                finally { Marshal.FreeHGlobal(ptr); }
-            }
-            AssignProcessToJobObject(handle, p.Handle);
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct JOBOBJECT_BASIC_LIMIT_INFORMATION
-        {
-            public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
-            public uint LimitFlags;
-            public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize;
-            public uint ActiveProcessLimit;
-            public UIntPtr Affinity;
-            public uint PriorityClass, SchedulingClass;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct IO_COUNTERS { public ulong a, b, c, d, e, f; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-        {
-            public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
-            public IO_COUNTERS IoInfo;
-            public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
-        }
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr a, string name);
-        [DllImport("kernel32.dll", SetLastError = true)] static extern bool SetInformationJobObject(IntPtr job, int cls, IntPtr info, uint len);
-        [DllImport("kernel32.dll", SetLastError = true)] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr proc);
-    }
-
     internal static class Win
     {
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
@@ -150,6 +99,12 @@ namespace SwarlexEasyDpi
             }
             catch (Exception) { }
             return 1.0;
+        }
+
+        public static bool WindowRect(IntPtr h, out int x, out int y, out int w, out int hgt)
+        {
+            RECT r; bool ok = GetWindowRect(h, out r);
+            x = r.Left; y = r.Top; w = r.Right - r.Left; hgt = r.Bottom - r.Top; return ok && w > 0 && hgt > 0;
         }
 
         public static bool WindowSize(IntPtr h, out int w, out int hgt)

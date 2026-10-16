@@ -20,7 +20,7 @@ namespace SwarlexEasyDpi
         readonly Flyout flyout;
         readonly Tray tray;
         readonly System.Windows.Threading.DispatcherTimer updateTimer, netTimer;
-        bool ready, starting, exiting, autostart, langOpen;
+        bool ready, starting, exiting, autostart;
         readonly ManualResetEvent quit = new ManualResetEvent(false);
         Thread waiter;
         DateTime lastToggle = DateTime.MinValue;
@@ -45,6 +45,9 @@ namespace SwarlexEasyDpi
             engine.Changed += delegate(State st, Info i) { Ui(delegate { OnState(st, i); }); };
             flyout.ToggleClicked += Toggle;
             flyout.MenuItems = MenuItems;
+            flyout.SideItems = SideItems;
+            flyout.Animate = settings.Animation;
+            flyout.ThemeMode = settings.Theme;
             tray.LeftClick += delegate { flyout.TogglePanel(IconPoint(true)); };
             tray.RightClick += delegate { flyout.ToggleMenu(IconPoint(true)); };
             // cift tikta ikinci basis paneli kapatir: acik birak
@@ -66,7 +69,7 @@ namespace SwarlexEasyDpi
 
             updateTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
             updateTimer.Tick += delegate { updateTimer.Interval = TimeSpan.FromHours(6); CheckUpdates(false); };
-            updateTimer.Start();
+            if (settings.AutoUpdate) updateTimer.Start();
 
             if (showSignal != null)
             {
@@ -88,6 +91,10 @@ namespace SwarlexEasyDpi
             // simge tepsiye yerlestikten sonra (konumu okunabilsin) paneli ac
             if (!silent) ui.BeginInvoke(new Action(delegate { flyout.ShowPanel(IconPoint(false)); }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             StartupAsync(false);
+            // Explorer simge kaydini olusturduktan sonra: saatin yaninda tut
+            var promote = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            promote.Tick += delegate { promote.Stop(); if (settings.KeepIcon) tray.SetPromoted(true); };
+            promote.Start();
         }
 
         void Ui(Action a)
@@ -157,25 +164,17 @@ namespace SwarlexEasyDpi
 
         // ---------------------------------------------------------------- menu
 
+        // Sag tik menusu (SwarlexBattery duzeni): ust satirda ana eylem, Dil ve Tercihler yan pencerede.
         List<MenuItem> MenuItems()
         {
             var l = new List<MenuItem>();
             if (update != null)
                 l.Add(new MenuItem { Glyph = "E896", Marked = true, Disabled = updateBusy == "install",
                     Text = updateBusy == "install" ? Strings.T("downloading", update.Version) : Strings.T("update", update.Version), Action = InstallUpdate });
-            bool active = engine.Active;
-            l.Add(new MenuItem { Glyph = "E7E8", Text = Strings.T(active ? "disconnect" : "connect"), Disabled = starting, Action = Toggle });
-            l.Add(new MenuItem { Glyph = "E945", Text = Strings.T("autoConnect"), Sub = Strings.T("autoConnectSub"), Check = settings.AutoConnect, KeepOpen = true,
-                Action = delegate { settings.AutoConnect = !settings.AutoConnect; settings.Save(); } });
-            l.Add(new MenuItem { Glyph = "E7B5", Text = Strings.T("startWithWindows"), Check = autostart, Disabled = !ready, KeepOpen = true, Action = ToggleAutostart });
+            l.Add(new MenuItem { Glyph = "E7E8", Text = Strings.T(engine.Active ? "disconnect" : "connect"), Disabled = starting, Action = Toggle });
             l.Add(MenuItem.Line());
-            l.Add(new MenuItem { Glyph = "E774", Text = Strings.T("language"), Tail = langOpen ? "E70E" : "E70D", KeepOpen = true, Action = delegate { langOpen = !langOpen; } });
-            if (langOpen)
-                foreach (var lang in Strings.Languages)
-                {
-                    string code = lang[0];
-                    l.Add(new MenuItem { Text = lang[1], Indent = true, Check = Strings.Lang == code, KeepOpen = true, Action = delegate { SetLanguage(code); } });
-                }
+            l.Add(new MenuItem { Glyph = "E774", Text = Strings.T("language"), Side = "lang" });
+            l.Add(new MenuItem { Glyph = "E713", Text = Strings.T("prefs"), Side = "prefs" });
             string sub = lastCheck.HasValue ? Strings.T("lastChecked", Ago(lastCheck.Value)) : null;
             if (updateBusy == "check") l.Add(new MenuItem { Glyph = "E895", Text = Strings.T("checking"), Disabled = true });
             else if (lastResult == "uptodate") l.Add(new MenuItem { Glyph = "E895", Text = Strings.T("upToDateRow", Updater.Current), Check = true, Sub = sub, KeepOpen = true, Action = delegate { CheckUpdates(true); } });
@@ -186,11 +185,48 @@ namespace SwarlexEasyDpi
             return l;
         }
 
+        // Yan pencere: "lang" = diller, "prefs" = tercihler (her satirda kisa aciklama).
+        List<MenuItem> SideItems(string kind)
+        {
+            var l = new List<MenuItem>();
+            if (kind == "lang")
+            {
+                foreach (var lang in Strings.Languages)
+                {
+                    string code = lang[0];
+                    l.Add(new MenuItem { Text = lang[1], Check = Strings.Lang == code, KeepOpen = true, Action = delegate { SetLanguage(code); } });
+                }
+                return l;
+            }
+            l.Add(new MenuItem { Text = Strings.T("autoConnect"), Sub = Strings.T("autoConnectSub"), Check = settings.AutoConnect, KeepOpen = true,
+                Action = delegate { settings.AutoConnect = !settings.AutoConnect; settings.Save(); } });
+            l.Add(new MenuItem { Text = Strings.T("startWithWindows"), Sub = Strings.T("startWithWindowsSub"), Check = autostart, Disabled = !ready, KeepOpen = true, Action = ToggleAutostart });
+            l.Add(new MenuItem { Text = Strings.T("keepIcon"), Sub = Strings.T("keepIconSub"), Check = settings.KeepIcon, KeepOpen = true,
+                Action = delegate { settings.KeepIcon = !settings.KeepIcon; settings.Save(); tray.SetPromoted(settings.KeepIcon); } });
+            l.Add(MenuItem.Line());
+            l.Add(new MenuItem { Text = Strings.T("animation"), Sub = Strings.T("animationSub"), Check = settings.Animation, KeepOpen = true,
+                Action = delegate { settings.Animation = !settings.Animation; settings.Save(); flyout.Animate = settings.Animation; } });
+            string th = settings.Theme == "dark" ? "themeDark" : settings.Theme == "light" ? "themeLight" : "themeAuto";
+            l.Add(new MenuItem { Text = Strings.T("theme", Strings.T(th)), Sub = Strings.T(th + "Sub"), KeepOpen = true,
+                Action = delegate
+                {
+                    settings.Theme = settings.Theme == "auto" ? "dark" : settings.Theme == "dark" ? "light" : "auto";
+                    settings.Save(); flyout.ThemeMode = settings.Theme; flyout.Retheme();
+                } });
+            l.Add(MenuItem.Line());
+            l.Add(new MenuItem { Text = Strings.T("autoUpdate"), Sub = Strings.T("autoUpdateSub"), Check = settings.AutoUpdate, KeepOpen = true,
+                Action = delegate
+                {
+                    settings.AutoUpdate = !settings.AutoUpdate; settings.Save();
+                    if (settings.AutoUpdate) { updateTimer.Interval = TimeSpan.FromSeconds(2); updateTimer.Start(); } else updateTimer.Stop();
+                } });
+            return l;
+        }
+
         void SetLanguage(string code)
         {
             settings.Lang = code; settings.Save();
             Strings.Load(code);
-            langOpen = false;
             OnState(state, info);
             flyout.Relabel();
         }

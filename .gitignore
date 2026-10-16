@@ -13,3 +13,11 @@ native/byedpi/
 CLAUDE.md
 .claude/
 .vs/
+
+# yanlislikla yayinlanmasin
+*.log
+.env
+*.pfx
+*.key
+bin/
+obj/

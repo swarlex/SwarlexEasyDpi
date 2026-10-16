@@ -19,7 +19,9 @@ namespace SwarlexEasyDpi
 
             // ayar listesi: az ve hizli, yalniz bilinen GoodbyeDPI secenekleri, port 1111 hatasi yok
             Check("configs 4", Configs.List.Length == 4);
-            Check("configs unique", Configs.List.Distinct().Count() == Configs.List.Length);
+            Check("configs unique", Enumerable.Range(0, Configs.List.Length).Select(Configs.Describe).Distinct().Count() == Configs.List.Length);
+            Check("doh flags match", Configs.Doh.Length == Configs.List.Length && Configs.Doh.Any(d => d) && Configs.Doh.Any(d => !d));
+            Check("no plain DNS redirect", !Configs.List.Any(c => c.Contains("--dns")));
             var known = new[] { "-5", "-9", "--set-ttl", "--dns-addr", "--dns-port", "--dnsv6-addr", "--dnsv6-port" };
             for (int i = 0; i < Configs.List.Length; i++)
             {
@@ -66,25 +68,65 @@ namespace SwarlexEasyDpi
             // panel ve menu onizlemeleri (Turkce)
             var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
             var f = new Flyout();
-            f.SetState(State.On, new Info { Dns = "Quad9" }); f.RenderTo(Path.Combine(outDir, "panel-on.png"), "panel");
+            f.SetState(State.On, new Info { Dns = "DoH" }); f.RenderTo(Path.Combine(outDir, "panel-on.png"), "panel");
             f.SetState(State.Off, new Info()); f.RenderTo(Path.Combine(outDir, "panel-off.png"), "panel");
             f.SetState(State.Connecting, new Info { Try = 2, Total = 4 }); f.RenderTo(Path.Combine(outDir, "panel-connecting.png"), "panel");
             f.MenuItems = delegate
             {
                 return new List<MenuItem> {
-                    new MenuItem { Glyph = "E896", Marked = true, Text = Strings.T("update", "1.0.1") },
                     new MenuItem { Glyph = "E7E8", Text = Strings.T("disconnect") },
-                    new MenuItem { Glyph = "E945", Text = Strings.T("autoConnect"), Sub = Strings.T("autoConnectSub"), Check = true },
-                    new MenuItem { Glyph = "E7B5", Text = Strings.T("startWithWindows"), Check = true },
                     MenuItem.Line(),
-                    new MenuItem { Glyph = "E774", Text = Strings.T("language"), Tail = "E70D" },
-                    new MenuItem { Glyph = "E895", Text = Strings.T("upToDateRow", "1.0.0"), Check = true, Sub = Strings.T("lastChecked", Strings.T("minutesAgo", 2)) },
+                    new MenuItem { Glyph = "E774", Text = Strings.T("language"), Side = "lang" },
+                    new MenuItem { Glyph = "E713", Text = Strings.T("prefs"), Side = "prefs" },
+                    new MenuItem { Glyph = "E895", Text = Strings.T("upToDateRow", "1.1.0"), Check = true, Sub = Strings.T("lastChecked", Strings.T("justNow")) },
                     new MenuItem { Glyph = "E9D9", Text = Strings.T("diagnostics") },
                     new MenuItem { Glyph = "E8BB", Text = Strings.T("exit") },
                 };
             };
             f.RenderTo(Path.Combine(outDir, "menu.png"), "menu");
+            // Tercihler yan penceresi (onizleme icin menu olarak cizilir)
+            f.MenuItems = delegate
+            {
+                return new List<MenuItem> {
+                    new MenuItem { Text = Strings.T("autoConnect"), Sub = Strings.T("autoConnectSub"), Check = true },
+                    new MenuItem { Text = Strings.T("startWithWindows"), Sub = Strings.T("startWithWindowsSub"), Check = true },
+                    new MenuItem { Text = Strings.T("keepIcon"), Sub = Strings.T("keepIconSub"), Check = true },
+                    MenuItem.Line(),
+                    new MenuItem { Text = Strings.T("animation"), Sub = Strings.T("animationSub"), Check = true },
+                    new MenuItem { Text = Strings.T("theme", Strings.T("themeAuto")), Sub = Strings.T("themeAutoSub") },
+                    MenuItem.Line(),
+                    new MenuItem { Text = Strings.T("autoUpdate"), Sub = Strings.T("autoUpdateSub"), Check = true },
+                };
+            };
+            f.RenderTo(Path.Combine(outDir, "prefs.png"), "menu");
             Check("previews", File.Exists(Path.Combine(outDir, "panel-on.png")) && File.Exists(Path.Combine(outDir, "menu.png")));
+
+            // uygulama ici motor (gdpi.dll): hatalar sureci kapatmamali, tekrar tekrar calisabilmeli
+            Gdpi.DllPath = Path.GetFullPath(Path.Combine(outDir, @"..\gdpi\gdpi.dll"));
+            int rcBad = Gdpi.Run(new[] { "goodbyedpi", "--port", "99999" });
+            Check("engine: bad option returns code (" + rcBad + "), process alive", rcBad > 0);
+            bool admin = new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            if (!admin)
+            {
+                int rc1 = Gdpi.Run(new[] { "goodbyedpi", "-9", "--set-ttl", "7" });
+                int rc2 = Gdpi.Run(new[] { "goodbyedpi", "-5", "--set-ttl", "5" });
+                Check("engine: no admin -> filter open fails cleanly (" + rc1 + "," + rc2 + ")", rc1 == 1 && rc2 == 1);
+                var run = new GdpiRun(Configs.Args(0));
+                var finished = new System.Threading.ManualResetEvent(false);
+                run.Finished += delegate { finished.Set(); };
+                run.Start();
+                Check("engine: thread run finishes with code (" + run.Code + ")", finished.WaitOne(10000) && run.HasExited && run.Code == 1);
+                Check("engine: stop after finish is safe", run.StopAndWait(1000));
+            }
+            else Console.WriteLine("  (yonetici: motor testi WinDivert'i gercekten acar, atlandi)");
+            if (!admin)
+            {
+                int de = Gdpi.DnsStart();
+                Check("dns: no admin -> start fails cleanly (" + de + ")", de != 0);
+                Gdpi.DnsStop();
+                Check("dns: stop when not running is safe", true);
+            }
+            Console.WriteLine("  dns poisoned here: " + Engine.DnsPoisoned());
 
             // dogrulama ucu (ag): sonuc yazilir, basarisizlik testi bozmaz (ag/VPN'e bagli)
             Engine.ConfigureNet();
