@@ -117,9 +117,9 @@ namespace SwarlexEasyDpi
         }
     }
 
-    // GoodbyeDPI ayarlari: Turkiye'de calistigi bilinen en iyi 4 tanesi (tm4to/easydpi'nin listesi +
-    // cagritaskn). Once DNS'e dokunmayan; sonra ayni ayarin DNS yonlendirmeli hali (ISS DNS'i
-    // zehirliyse gerekir, duz DNS trafigini o sunucuya yollar). Sifresiz/standart disi portlu Yandex
+    // GoodbyeDPI ayarlari: once otomatik TTL'li -9 (easydpi'nin -9'u, sabit TTL yerine), sonra
+    // Turkiye'de calistigi bilinen cagritaskn ayari. Her biri once DNS'e dokunmadan, sonra sifreli
+    // DNS'li (ISS DNS'i zehirliyse gerekir). Sifresiz/standart disi portlu Yandex
     // cikarildi (bazi aglarda 1253. port kapali, tum DNS'i kiriyordu). easydpi'deki
     // "--dnsv6-port 1111" hatasi (Cloudflare o portta DNS sunmaz) duzeltildi.
     internal static class Configs
@@ -128,8 +128,14 @@ namespace SwarlexEasyDpi
         // sunucuya yonlendiren eski ayarlarin (--dns-addr) yerini aldi: sorgular HTTPS ile gider ve
         // 53. portu disariya kapali aglarda da calisir.
         public static readonly string[] List = {
-            "-9 --set-ttl 7",                                                     // easydpi
-            "-9 --set-ttl 7",
+            // --auto-ttl: sahte paketin TTL'i sunucuya olan uzakliga gore secilir, sunucudan once duser.
+            // Sabit TTL (eski "-9 --set-ttl 7") sunucu 7 atlamadan yakinsa (Google'in ISS icindeki
+            // onbellekleri, Cloudflare Istanbul) sahte ClientHello'yu sunucuya ulastirip baglantiyi
+            // bozuyordu: Discord "baglandi" derken Google/YouTube/CDN acilmiyordu (olculdu: 4-6 atlama).
+            "-9 --auto-ttl",                                                      // easydpi (-9)
+            "-9 --auto-ttl",
+            // Yedek: yakin sunucularda yine bozabilir; dogrulama Google ve Discord CDN'e de baktigi
+            // icin bozuyorsa tam dogrulanmis sayilmaz.
             // -q: QUIC/HTTP3 engellenir (-9'da zaten var). Yoksa Chrome/Edge ve Discord uygulamasi
             // (Electron) siteye QUIC ile gider; GoodbyeDPI QUIC'e dokunmaz, DPI SNI'yi gorup keser ve
             // dogrulama (TCP) yesil gosterirken uygulamalar acilmaz. Engellenince TCP'ye duserler.
@@ -155,7 +161,7 @@ namespace SwarlexEasyDpi
         public bool Animation = true;     // panel/menu kayarak acilir
         public string Theme = "auto";     // auto | dark | light
         public bool KeepIcon = true;      // simge saatin yaninda (^ okunun arkasinda degil)
-        const int Version = 4;            // ayar listesi degisince eski indeks gecersiz
+        const int Version = 5;            // ayar listesi degisince eski indeks gecersiz (5: --auto-ttl)
 
         public static Settings Load()
         {
@@ -262,6 +268,7 @@ namespace SwarlexEasyDpi
         bool dohOn;         // sifreli DNS su an gercekten calisiyor mu
         int gen;            // her Connect/Stop'ta artar; eski arka plan isleri kendini iptal eder
         int crashes;
+        int running;        // su an calisan ayar (yedek ayar settings.Config'e kaydedilmez)
         DateTime startedAt;
         State current = State.Off;
 
@@ -390,13 +397,17 @@ namespace SwarlexEasyDpi
         // ki ayar degisince eski (zehirli) cevap kullanilmasin.
         // Discord uygulamasi discord.com'un yaninda gateway.discord.gg (sohbet baglantisi) ve
         // cdn.discordapp.com'a (resim/dosya) da baglanir. Engel bunlarda ayri olabilir (DNS ya da SNI):
-        // yalniz discord.com'a bakmak "yesil ama Discord acilmiyor" sonucunu verirdi. Bu ikisinde
-        // gecerli sertifikayla gelen herhangi bir HTTP cevabi (404/403 dahil) yeterli.
-        static readonly string[] ExtraProbes = { "https://gateway.discord.gg/", "https://cdn.discordapp.com/" };
+        // yalniz discord.com'a bakmak "yesil ama Discord acilmiyor" sonucunu verirdi. Google: engelli
+        // degil ama sunuculari yakin; sahte paketleri sunucuya ulastirip siteleri bozan bir ayari en iyi
+        // o yakalar. Bu ek uclarda gecerli sertifikayla gelen herhangi bir HTTP cevabi (404/403/204) yeterli.
+        static readonly string[] ExtraProbes = { "https://gateway.discord.gg/", "https://cdn.discordapp.com/", "https://www.google.com/generate_204" };
 
-        // full: ayar secerken uc ucu birden ister. Ag degisince (Recheck) yalniz discord.com: yavas bir CDN
+        // full: ayar secerken tum uclari ister. Ag degisince (Recheck) yalniz discord.com: yavas bir CDN
         // calisan baglantiyi koparip tum ayarlari bastan denetmesin.
-        public static bool Probe(bool full = true)
+        public static bool Probe(bool full = true) { bool d; return Probe(full, out d); }
+
+        // discordOk: discord.com API'si 200 dondu mu (digerleri basarisiz olsa da; yedek ayar secimi icin).
+        public static bool Probe(bool full, out bool discordOk)
         {
             var all = new List<System.Threading.Tasks.Task<bool>>();
             var names = new List<string>();
@@ -421,6 +432,13 @@ namespace SwarlexEasyDpi
                 ok = pending[i].Result;
                 pending.RemoveAt(i);
             }
+            // baska bir uc erken basarisiz olduysa discord.com'un sonucunu kalan sure icinde bekle (yedek secimi)
+            if (!ok && !all[0].IsCompleted)
+            {
+                int left = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+                if (left > 0) try { all[0].Wait(left); } catch (AggregateException) { }
+            }
+            discordOk = all[0].Status == System.Threading.Tasks.TaskStatus.RanToCompletion && all[0].Result;
             if (pending.Count > 0) foreach (var r in reqs) try { r.Abort(); } catch (Exception) { }
             return ok;
         }
@@ -537,6 +555,7 @@ namespace SwarlexEasyDpi
                 order = doh;
             }
 
+            int fallback = -1;   // hepsini gecemeyen ama Discord'u acan ilk ayar
             for (int n = 0; n < order.Count; n++)
             {
                 int c = order[n];
@@ -547,7 +566,13 @@ namespace SwarlexEasyDpi
                 Thread.Sleep(1200); // WinDivert filtresi ~1 sn icinde devrede
                 if (!Running(my)) { Log.Write("goodbyedpi kapandi"); continue; }
                 try { DnsFlushResolverCache(); } catch (Exception) { }
-                if (!Probe()) { Log.Write("Dogrulanamadi: " + Configs.Describe(c)); continue; }
+                bool discordOk;
+                if (!Probe(true, out discordOk))
+                {
+                    Log.Write("Dogrulanamadi: " + Configs.Describe(c) + (discordOk ? " (Discord acik; yedek)" : ""));
+                    if (discordOk && fallback < 0) fallback = c;
+                    continue;
+                }
                 if (settings.Config != c) { settings.Config = c; settings.Save(); }
                 string dns = dohOn ? Configs.DnsName(c) : null;
                 // dogrulama surerken surec olmus olabilir: kontrol ve durum ayni kilit altinda
@@ -562,19 +587,21 @@ namespace SwarlexEasyDpi
                 return;
             }
 
-            // Hicbiri dogrulanamadi (internet yok ya da Discord kapali): kayitli ayarla acik kal.
+            // Hicbiri tam dogrulanamadi: Discord'u acan bir ayar olduysa onunla, yoksa kayitli ayarla
+            // acik kal (internet yok ya da Discord kapali).
             if (!Alive(my)) return;
-            if (StartConfig(my, settings.Config))
+            int keep = fallback >= 0 ? fallback : settings.Config;
+            if (StartConfig(my, keep))
             {
                 Thread.Sleep(1000);
-                string dns = dohOn ? Configs.DnsName(settings.Config) : null;
+                string dns = dohOn ? Configs.DnsName(keep) : null;
                 lock (gate)
                 {
                     if (my != gen) return;
                     if (proc != null && !proc.HasExited)
                     {
                         Raise(my, State.Unverified, new Info { Dns = dns });
-                        Log.Write("Hicbir ayar dogrulanamadi; kayitli ayarla acik");
+                        Log.Write("Hicbir ayar tam dogrulanamadi; acik: " + Configs.Describe(keep));
                         return;
                     }
                 }
@@ -592,6 +619,7 @@ namespace SwarlexEasyDpi
                 {
                     if (stuck) { Log.Write("Onceki GoodbyeDPI calismasi durmadi; yeniden baslatma gerekli"); return false; }
                     var run = new GdpiRun(Configs.Args(c));
+                    running = c;
                     run.Finished += OnExited;
                     proc = run;
                     startedAt = DateTime.Now;
@@ -672,13 +700,18 @@ namespace SwarlexEasyDpi
             int my; State was;
             lock (gate) { if (current != State.On && current != State.Unverified) return; my = gen; was = current; }
             try { DnsFlushResolverCache(); } catch (Exception) { }
-            if (Probe(false))
+            // Dogrulanmamis (or. yedek ayar): yesile gecmek icin tum uclar gecmeli; yalniz Discord aciksa
+            // oldugu gibi kalir. Yesilken yalniz discord.com'a bakilir (yavas CDN baglantiyi koparmasin).
+            bool discordOk, all;
+            if (was == State.Unverified) all = Probe(true, out discordOk);
+            else all = discordOk = Probe(false);
+            if (discordOk)
             {
-                Log.Write("Ag degisikliginden sonra baglanti saglam");
-                if (was == State.Unverified)
+                Log.Write("Ag degisikliginden sonra baglanti saglam" + (all ? "" : " (yalniz Discord)"));
+                if (was == State.Unverified && all)
                     lock (gate)
                         if (my == gen && current == State.Unverified && proc != null && !proc.HasExited)
-                            Raise(my, State.On, new Info { Dns = dohOn ? Configs.DnsName(settings.Config) : null });
+                            Raise(my, State.On, new Info { Dns = dohOn ? Configs.DnsName(running) : null });
                 return;
             }
             Log.Write("Ag degisikliginden sonra baglanti yok; yeniden baglaniliyor");

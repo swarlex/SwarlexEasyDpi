@@ -116,6 +116,9 @@ WINSOCK_API_LINKAGE INT WSAAPI inet_pton(INT Family, LPCSTR pStringBuf, PVOID pA
 
 #define TCP_HANDLE_OUTGOING_FAKE_PACKET(func) do { \
     should_send_fake = 1; \
+    /* SwarlexEasyDpi: uzaklik bilinmiyorsa (kayit yok/suresi doldu) onceki baglantinin TTL'i \
+     * kullanilmasin; 0 = TTL'li sahte paket atlanir (yanlis checksum/seq'li olan gider). */ \
+    if (do_auto_ttl) ttl_of_fake_packet = 0; \
     if (do_auto_ttl || ttl_min_nhops) { \
         TCP_HANDLE_OUTGOING_TTL_PARSE_PACKET_IF() { \
             if (do_auto_ttl) { \

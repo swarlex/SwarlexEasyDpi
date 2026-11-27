@@ -22,7 +22,7 @@ namespace SwarlexEasyDpi
             Check("configs unique", Enumerable.Range(0, Configs.List.Length).Select(Configs.Describe).Distinct().Count() == Configs.List.Length);
             Check("doh flags match", Configs.Doh.Length == Configs.List.Length && Configs.Doh.Any(d => d) && Configs.Doh.Any(d => !d));
             Check("no plain DNS redirect", !Configs.List.Any(c => c.Contains("--dns")));
-            var known = new[] { "-5", "-9", "-q", "--set-ttl", "--dns-addr", "--dns-port", "--dnsv6-addr", "--dnsv6-port" };
+            var known = new[] { "-5", "-9", "-q", "--auto-ttl", "--set-ttl", "--dns-addr", "--dns-port", "--dnsv6-addr", "--dnsv6-port" };
             // QUIC her ayarda engelli (-9 zaten -q icerir): yoksa tarayici/Discord QUIC ile gider, atlatma islemez
             Check("every config blocks QUIC", Configs.List.All(c => c.StartsWith("-9") || c.Split(' ').Contains("-q")));
 #if PORTABLE
@@ -41,7 +41,7 @@ namespace SwarlexEasyDpi
                 bool ok = args.Count > 0;
                 for (int j = 0; j < args.Count; j++)
                 {
-                    if (args[j].StartsWith("-")) { ok &= known.Contains(args[j]); if (args[j].StartsWith("--")) { ok &= j + 1 < args.Count && !args[j + 1].StartsWith("-"); j++; } }
+                    if (args[j].StartsWith("-")) { ok &= known.Contains(args[j]); if (args[j].StartsWith("--") && args[j] != "--auto-ttl") { ok &= j + 1 < args.Count && !args[j + 1].StartsWith("-"); j++; } }
                     else ok = false;
                 }
                 Check("config " + i + " valid: " + Configs.List[i], ok);
