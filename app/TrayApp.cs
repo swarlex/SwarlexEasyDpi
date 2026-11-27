@@ -69,7 +69,8 @@ namespace SwarlexEasyDpi
 
             updateTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
             updateTimer.Tick += delegate { updateTimer.Interval = TimeSpan.FromHours(6); CheckUpdates(false); };
-            if (settings.AutoUpdate) updateTimer.Start();
+            // Tasinabilir surum kendini guncellemez (Program Files'taki kopyayi degistiren guncelleyici).
+            if (settings.AutoUpdate && !Paths.Portable) updateTimer.Start();
 
             if (showSignal != null)
             {
@@ -86,7 +87,7 @@ namespace SwarlexEasyDpi
                 waiter.Start();
             }
 
-            Log.Write("SwarlexEasyDpi v" + Updater.Current + " basladi" + (silent ? " (tepside)" : ""));
+            Log.Write("SwarlexEasyDpi v" + Updater.Current + " basladi" + (silent ? " (tepside)" : "") + (Paths.Portable ? " (tasinabilir)" : ""));
             OnState(State.Connecting, info);
             // simge tepsiye yerlestikten sonra (konumu okunabilsin) paneli ac
             if (!silent) ui.BeginInvoke(new Action(delegate { flyout.ShowPanel(IconPoint(false)); }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
@@ -139,7 +140,7 @@ namespace SwarlexEasyDpi
                 Engine.ConfigureNet();
                 Engine.StopForeign();      // eski GoodbyeDPI servisi WinDivert'i tutmasin
                 Engine.InstallBinaries();
-                bool auto = AutostartEnabled();
+                bool auto = !Paths.Portable && AutostartEnabled();
                 Ui(delegate { autostart = auto; ready = true; starting = false; });
             }
             catch (Exception ex)
@@ -176,7 +177,8 @@ namespace SwarlexEasyDpi
             l.Add(new MenuItem { Glyph = "E774", Text = Strings.T("language"), Side = "lang" });
             l.Add(new MenuItem { Glyph = "E713", Text = Strings.T("prefs"), Side = "prefs" });
             string sub = lastCheck.HasValue ? Strings.T("lastChecked", Ago(lastCheck.Value)) : null;
-            if (updateBusy == "check") l.Add(new MenuItem { Glyph = "E895", Text = Strings.T("checking"), Disabled = true });
+            if (Paths.Portable) { }   // guncelleme satiri yok: tasinabilir surum kendini guncellemez
+            else if (updateBusy == "check") l.Add(new MenuItem { Glyph = "E895", Text = Strings.T("checking"), Disabled = true });
             else if (lastResult == "uptodate") l.Add(new MenuItem { Glyph = "E895", Text = Strings.T("upToDateRow", Updater.Current), Check = true, Sub = sub, KeepOpen = true, Action = delegate { CheckUpdates(true); } });
             else if (lastResult == "error") l.Add(new MenuItem { Glyph = "E7BA", Text = Strings.T("checkFailedRow"), Sub = sub, KeepOpen = true, Action = delegate { CheckUpdates(true); } });
             else l.Add(new MenuItem { Glyph = "E895", Text = Strings.T("checkUpdates", Updater.Current), Sub = sub, KeepOpen = true, Action = delegate { CheckUpdates(true); } });
@@ -200,7 +202,10 @@ namespace SwarlexEasyDpi
             }
             l.Add(new MenuItem { Text = Strings.T("autoConnect"), Sub = Strings.T("autoConnectSub"), Check = settings.AutoConnect, KeepOpen = true,
                 Action = delegate { settings.AutoConnect = !settings.AutoConnect; settings.Save(); } });
-            l.Add(new MenuItem { Text = Strings.T("startWithWindows"), Sub = Strings.T("startWithWindowsSub"), Check = autostart, Disabled = !ready, KeepOpen = true, Action = ToggleAutostart });
+            // Tasinabilir: Windows ile baslatma yok (gorev, kullanicinin yazabildigi klasordeki exe'yi
+            // her oturumda yonetici olarak UAC sormadan calistirirdi).
+            if (!Paths.Portable)
+                l.Add(new MenuItem { Text = Strings.T("startWithWindows"), Sub = Strings.T("startWithWindowsSub"), Check = autostart, Disabled = !ready, KeepOpen = true, Action = ToggleAutostart });
             l.Add(new MenuItem { Text = Strings.T("keepIcon"), Sub = Strings.T("keepIconSub"), Check = settings.KeepIcon, KeepOpen = true,
                 Action = delegate { settings.KeepIcon = !settings.KeepIcon; settings.Save(); tray.SetPromoted(settings.KeepIcon); } });
             l.Add(MenuItem.Line());
@@ -213,6 +218,7 @@ namespace SwarlexEasyDpi
                     settings.Theme = settings.Theme == "auto" ? "dark" : settings.Theme == "dark" ? "light" : "auto";
                     settings.Save(); flyout.ThemeMode = settings.Theme; flyout.Retheme();
                 } });
+            if (Paths.Portable) return l;
             l.Add(MenuItem.Line());
             l.Add(new MenuItem { Text = Strings.T("autoUpdate"), Sub = Strings.T("autoUpdateSub"), Check = settings.AutoUpdate, KeepOpen = true,
                 Action = delegate

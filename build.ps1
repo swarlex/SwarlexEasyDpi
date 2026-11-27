@@ -134,19 +134,29 @@ $gom = @(
     "-resource:$(Join-Path $Kok 'lang\en.json'),lang.en.json"
 )
 $exe = Join-Path $Dist 'SwarlexEasyDpi.exe'
-# calisan bir kopya exe'yi kilitler: calisan exe yeniden adlandirilabilir, kenara al
-if (Test-Path -LiteralPath $exe) {
-    try { [IO.File]::Open($exe, 'Open', 'ReadWrite', 'None').Dispose() }
-    catch { Remove-Item -LiteralPath "$exe.old" -Force -ErrorAction SilentlyContinue; Rename-Item -LiteralPath $exe -NewName 'SwarlexEasyDpi.exe.old' }
+# Tasinabilir surum: ayni kaynak, PORTABLE ile (kurulmaz, ayarlar exe'nin yaninda, kendini guncellemez)
+$exeP = Join-Path $Dist 'SwarlexEasyDpi-Portable.exe'
+foreach ($e in $exe, $exeP) {
+    # calisan bir kopya exe'yi kilitler: calisan exe yeniden adlandirilabilir, kenara al
+    if (Test-Path -LiteralPath $e) {
+        try { [IO.File]::Open($e, 'Open', 'ReadWrite', 'None').Dispose() }
+        catch { Remove-Item -LiteralPath "$e.old" -Force -ErrorAction SilentlyContinue; Rename-Item -LiteralPath $e -NewName "$([IO.Path]::GetFileName($e)).old" }
+    }
 }
-Calistir $Csc ($ortak + @('-target:winexe', '-warn:4', "-out:$exe", "-win32manifest:$(Join-Path $app 'app.manifest')", "-win32icon:$ico") +
-    $ref + $gom + $ortakKaynak + @((Join-Path $app 'Program.cs'), (Join-Path $app 'TrayApp.cs'), $asmInfo))
+$uyg = @("-win32manifest:$(Join-Path $app 'app.manifest')", "-win32icon:$ico") + $ref + $gom + $ortakKaynak + @((Join-Path $app 'Program.cs'), (Join-Path $app 'TrayApp.cs'), $asmInfo)
+Calistir $Csc ($ortak + @('-target:winexe', '-warn:4', "-out:$exe") + $uyg)
+Adim "SwarlexEasyDpi-Portable.exe v$surum"
+Calistir $Csc ($ortak + @('-target:winexe', '-warn:4', '-define:PORTABLE', "-out:$exeP") + $uyg)
 
 if ($Test) {
     Adim 'Testler'
     $t = Join-Path $Bld 'app\tests.exe'
     Calistir $Csc ($ortak + @('-target:exe', "-out:$t") + $ref + $gom + $ortakKaynak + @((Join-Path $Kok 'tests\Tests.cs'), $asmInfo))
     Calistir $t @((Join-Path $Bld 'app'))
+    Adim 'Testler (tasinabilir)'
+    $tp = Join-Path $Bld 'app\tests-portable.exe'
+    Calistir $Csc ($ortak + @('-target:exe', '-define:PORTABLE', "-out:$tp") + $ref + $gom + $ortakKaynak + @((Join-Path $Kok 'tests\Tests.cs'), $asmInfo))
+    Calistir $tp @((Join-Path $Bld 'app'))
 }
 
 # Lisanslar surumle birlikte dagitilir (Apache-2.0 / LGPL ikili dosyayla birlikte metin ister).
@@ -156,6 +166,8 @@ $lisans = foreach ($f in 'LICENSE', 'docs\THIRD_PARTY_NOTICES.md', 'native\goodb
 Set-Content -LiteralPath (Join-Path $Dist 'LICENSES.txt') -Value ($lisans -join [Environment]::NewLine) -Encoding UTF8
 
 # Guncelleyici her surumde bu dosyayla karsilastirir.
-$hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-Set-Content -LiteralPath "$exe.sha256" -Value "$hash  SwarlexEasyDpi.exe" -Encoding ASCII
-Adim "Hazir: $exe ($([math]::Round((Get-Item $exe).Length / 1KB)) KB)"
+foreach ($e in $exe, $exeP) {
+    $hash = (Get-FileHash -LiteralPath $e -Algorithm SHA256).Hash.ToLowerInvariant()
+    Set-Content -LiteralPath "$e.sha256" -Value "$hash  $([IO.Path]::GetFileName($e))" -Encoding ASCII
+    Adim "Hazir: $e ($([math]::Round((Get-Item $e).Length / 1KB)) KB)"
+}

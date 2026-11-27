@@ -51,6 +51,8 @@ catch { Set-Content -LiteralPath $vf -Value "$cur" -Encoding ASCII; throw "Build
 $exe = Join-Path $root 'dist\SwarlexEasyDpi.exe'
 $sha = "$exe.sha256"
 $lic = Join-Path $root 'dist\LICENSES.txt'
+$exeP = Join-Path $root 'dist\SwarlexEasyDpi-Portable.exe'
+$shaP = "$exeP.sha256"
 
 # 3. commit on a release branch, pull request, merge into main
 $msg = "v$Version`: $Notes"
@@ -81,7 +83,7 @@ if (Test-Path -LiteralPath $log) {
 }
 $notesFile = Join-Path ([IO.Path]::GetTempPath()) "swarlexeasydpi-notes-$Version.md"
 [IO.File]::WriteAllText($notesFile, $body, (New-Object Text.UTF8Encoding $false))   # BOM'suz: ilk baslik bozulmasin
-& $gh release create "v$Version" $exe $sha $lic --repo $Repo --title "v$Version" --notes-file $notesFile --target main
+& $gh release create "v$Version" $exe $sha $exeP $shaP $lic --repo $Repo --title "v$Version" --notes-file $notesFile --target main
 $rc = $LASTEXITCODE
 Remove-Item -LiteralPath $notesFile -Force -ErrorAction SilentlyContinue
 if ($rc -ne 0) { throw 'gh release create failed' }
