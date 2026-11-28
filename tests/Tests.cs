@@ -18,18 +18,30 @@ namespace SwarlexEasyDpi
             string outDir = a.Length > 0 ? a[0] : ".";
 
             // ayar listesi: az ve hizli, yalniz bilinen GoodbyeDPI secenekleri, port 1111 hatasi yok
-            Check("configs 4", Configs.List.Length == 4);
+            Check("configs 6", Configs.List.Length == 6);
             Check("configs unique", Enumerable.Range(0, Configs.List.Length).Select(Configs.Describe).Distinct().Count() == Configs.List.Length);
             Check("doh flags match", Configs.Doh.Length == Configs.List.Length && Configs.Doh.Any(d => d) && Configs.Doh.Any(d => !d));
             Check("no plain DNS redirect", !Configs.List.Any(c => c.Contains("--dns")));
-            var known = new[] { "-5", "-9", "--set-ttl", "--dns-addr", "--dns-port", "--dnsv6-addr", "--dnsv6-port" };
+            var known = new[] { "-5", "-9", "-q", "--auto-ttl", "--set-ttl", "--dns-addr", "--dns-port", "--dnsv6-addr", "--dnsv6-port" };
+            // QUIC her ayarda engelli (-9 zaten -q icerir): yoksa tarayici/Discord QUIC ile gider, atlatma islemez
+            Check("every config blocks QUIC", Configs.List.All(c => c.StartsWith("-9") || c.Split(' ').Contains("-q")));
+#if PORTABLE
+            // ayar/kayit kullanicinin yazabildigi exe klasorunde degil, ProgramData'daki yonetici klasorunde
+            Check("portable: data not next to exe", Paths.Portable && !Paths.Dir.StartsWith(AppDomain.CurrentDomain.BaseDirectory, StringComparison.OrdinalIgnoreCase) &&
+                Paths.Dir.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), StringComparison.OrdinalIgnoreCase));
+            Check("portable: admin-only ACL is protected", Paths.AdminOnly().AreAccessRulesProtected && Paths.AdminOnly().GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier)).Count == 2);
+            string winTemp = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp") + "\\";
+            Check("portable: engine dir in Windows\\Temp, not next to exe", Paths.Bin.StartsWith(winTemp, StringComparison.OrdinalIgnoreCase) && Paths.GdpiDll.StartsWith(Paths.Bin));
+#else
+            Check("installed: Program Files", !Paths.Portable && Paths.Bin.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), StringComparison.OrdinalIgnoreCase));
+#endif
             for (int i = 0; i < Configs.List.Length; i++)
             {
                 var args = Configs.Args(i);
                 bool ok = args.Count > 0;
                 for (int j = 0; j < args.Count; j++)
                 {
-                    if (args[j].StartsWith("-")) { ok &= known.Contains(args[j]); if (args[j].StartsWith("--")) { ok &= j + 1 < args.Count && !args[j + 1].StartsWith("-"); j++; } }
+                    if (args[j].StartsWith("-")) { ok &= known.Contains(args[j]); if (args[j].StartsWith("--") && args[j] != "--auto-ttl") { ok &= j + 1 < args.Count && !args[j + 1].StartsWith("-"); j++; } }
                     else ok = false;
                 }
                 Check("config " + i + " valid: " + Configs.List[i], ok);

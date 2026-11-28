@@ -55,8 +55,10 @@ namespace SwarlexEasyDpi
                     return 1;
                 }
 
+#if !PORTABLE
                 // Indirilenler gibi yazilabilir bir klasorden calisiyorsa kendini Program Files'a
                 // kopyalayip oradan yeniden baslat; yonetici sureci o klasordeki dosyalara guvenmesin.
+                // (Tasinabilir surum kurulmaz: yerinde calisir, motor dosyalari icin bkz. Paths.Bin.)
                 if (!RunningInstalled())
                 {
                     try
@@ -84,6 +86,7 @@ namespace SwarlexEasyDpi
                         if (mutex == null) return 1;
                     }
                 }
+#endif
 
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);

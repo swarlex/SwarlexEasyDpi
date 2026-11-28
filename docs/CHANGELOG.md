@@ -2,6 +2,29 @@
 
 All notable changes. Downloads: [Releases](https://github.com/swarlex/SwarlexEasyDpi/releases).
 
+## 1.1.1
+
+### Fixed
+- **Sites broke while it was on.** The fixed-TTL settings (`--set-ttl 7` / `5`) sent their fake packets far enough
+  to reach servers that are only a few hops away (measured: Google 4, Discord/Cloudflare 6), which broke the real
+  connection. The settings now use an automatic TTL that follows the server's distance: `-5 -q` first, then
+  `-9 --auto-ttl`; the old `-5 --set-ttl 5 -q` is only a last resort. The saved setting starts over once.
+  The engine also no longer reuses the previous connection's TTL when a server's distance is unknown. The connection check now
+  also asks `www.google.com/generate_204`: a setting that breaks nearby servers is never shown as green (if
+  nothing passes everything, one that at least opens Discord is kept, shown orange).
+- **Green, but Discord or sites did not open.** The connection check only asked discord.com from the app itself
+  (over TCP), so a setting could pass while browsers and the Discord app still failed:
+  - the `-5` settings did not block QUIC (HTTP/3), which GoodbyeDPI does not handle; Chrome, Edge and the
+    Discord app used it and were blocked. QUIC is now blocked in every setting, so they fall back to TCP.
+  - the check now also needs `gateway.discord.gg` (chat connection) and `cdn.discordapp.com` (images, files)
+    to answer, and poisoned DNS is detected on those names too.
+
+### Added
+- **Portable version** `SwarlexEasyDpi-Portable.exe`: does not copy itself to Program Files and runs where it is.
+  Settings and log go to `C:\ProgramData\SwarlexEasyDpi-Portable` (admin-only; not next to the exe, where any
+  program could tamper with what the admin-run app writes). No self-update and no *Start with Windows*
+  (download the new portable exe instead). Keep the exe in a folder only you control.
+
 ## 1.1.0
 
 ### Changed

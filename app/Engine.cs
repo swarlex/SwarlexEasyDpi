@@ -6,7 +6,9 @@ using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using Microsoft.Win32;
@@ -15,14 +17,83 @@ namespace SwarlexEasyDpi
 {
     internal static class Paths
     {
+#if PORTABLE
+        // Tasinabilir surum: kurulum yok, exe oldugu yerde calisir. Ayar ve kayit exe'nin yaninda DEGIL:
+        // orasi kullanicinin yazabildigi bir yer olabilir; yonetici sureci oradaki bir baglanti noktasi
+        // ile istenen dosyanin ustune yazdirilabilir/sildirilebilirdi. ProgramData altinda, yalniz
+        // SYSTEM/Yoneticiler'e acik bir klasor (EnsureDir).
+        public static readonly bool Portable = true;
+        public static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SwarlexEasyDpi-Portable");
+        // Motor dosyalari (yonetici olarak yuklenir) exe'nin yanina degil: orasi kullanicinin yazabildigi
+        // bir yer olabilir. Windows\Temp altinda her acilista yeni, rastgele adli ve yalniz
+        // SYSTEM/Yoneticiler'in yazabildigi bir klasor (Engine.InstallBinaries olusturur).
+        public static readonly string TempRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp");
+        public const string BinPrefix = "SwarlexEasyDpi-";
+        public static readonly string Bin = Path.Combine(TempRoot, BinPrefix + Guid.NewGuid().ToString("N"));
+#else
+        public static readonly bool Portable = false;
         // Program Files yalniz yoneticinin yazabildigi bir yer; yonetici olarak calisan
         // dosyalari normal kullanici surecleri degistiremez. Ortam degiskeni degil bilinen klasor kaydi.
         public static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SwarlexEasyDpi");
         public static readonly string Bin = Path.Combine(Dir, "bin");
+#endif
         public static readonly string Settings = Path.Combine(Dir, "ayarlar.ini");
         public static readonly string LogFile = Path.Combine(Dir, "kayit.txt");
         public static readonly string InstalledExe = Path.Combine(Dir, "SwarlexEasyDpi.exe");
         public static readonly string GdpiDll = Path.Combine(Bin, "gdpi.dll");
+
+#if PORTABLE
+        static readonly object dirGate = new object();
+        static bool dirOk;
+#endif
+
+        // Ayar/kayit klasorunu hazirlar. Tasinabilirde: klasor yoksa yalniz SYSTEM/Yoneticiler'e acik
+        // olusturulur; varsa baglanti noktasi olmamali ve sahibi Yoneticiler/SYSTEM olmali (normal bir
+        // kullanicinin onceden actigi klasore yazilmaz), izinler her acilista yeniden uygulanir.
+        public static void EnsureDir()
+        {
+#if PORTABLE
+            lock (dirGate)
+            {
+                if (dirOk) return;
+                var di = new DirectoryInfo(Dir);
+                if (!di.Exists) Directory.CreateDirectory(Dir, AdminOnly());
+                else
+                {
+                    if (!Trusted(di)) throw new IOException("guvenilmeyen klasor: " + Dir);
+                    di.SetAccessControl(AdminOnly());
+                }
+                dirOk = true;
+            }
+#else
+            Directory.CreateDirectory(Dir);
+#endif
+        }
+
+        static readonly SecurityIdentifier Admins = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        static readonly SecurityIdentifier SystemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+
+        // Kalitimi kapali: yalniz SYSTEM ve Yoneticiler tam denetim.
+        public static DirectorySecurity AdminOnly()
+        {
+            var sec = new DirectorySecurity();
+            sec.SetAccessRuleProtection(true, false);
+            // "Yoneticiler'in olusturdugu nesnelerin sahibi: olusturan" ilkesi acik olsa da sahip Yoneticiler olsun
+            // (Trusted buna bakar)
+            sec.SetOwner(Admins);
+            foreach (var sid in new[] { SystemSid, Admins })
+                sec.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            return sec;
+        }
+
+        // Bizim olusturdugumuz turden mi: baglanti noktasi degil, sahibi Yoneticiler/SYSTEM.
+        public static bool Trusted(DirectoryInfo di)
+        {
+            if ((di.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+            var owner = di.GetAccessControl(AccessControlSections.Owner).GetOwner(typeof(SecurityIdentifier));
+            return owner == Admins || owner == SystemSid;
+        }
     }
 
     internal static class Log
@@ -36,7 +107,7 @@ namespace SwarlexEasyDpi
             {
                 try
                 {
-                    Directory.CreateDirectory(Paths.Dir);
+                    Paths.EnsureDir();
                     var fi = new FileInfo(Paths.LogFile);
                     if (fi.Exists && fi.Length > 512 * 1024) File.Delete(Paths.LogFile);
                     File.AppendAllText(Paths.LogFile, line + Environment.NewLine, Encoding.UTF8);
@@ -46,9 +117,9 @@ namespace SwarlexEasyDpi
         }
     }
 
-    // GoodbyeDPI ayarlari: Turkiye'de calistigi bilinen en iyi 4 tanesi (tm4to/easydpi'nin listesi +
-    // cagritaskn). Once DNS'e dokunmayan; sonra ayni ayarin DNS yonlendirmeli hali (ISS DNS'i
-    // zehirliyse gerekir, duz DNS trafigini o sunucuya yollar). Sifresiz/standart disi portlu Yandex
+    // GoodbyeDPI ayarlari: once otomatik TTL'li -9 (easydpi'nin -9'u, sabit TTL yerine), sonra
+    // Turkiye'de calistigi bilinen cagritaskn ayari. Her biri once DNS'e dokunmadan, sonra sifreli
+    // DNS'li (ISS DNS'i zehirliyse gerekir). Sifresiz/standart disi portlu Yandex
     // cikarildi (bazi aglarda 1253. port kapali, tum DNS'i kiriyordu). easydpi'deki
     // "--dnsv6-port 1111" hatasi (Cloudflare o portta DNS sunmaz) duzeltildi.
     internal static class Configs
@@ -57,12 +128,27 @@ namespace SwarlexEasyDpi
         // sunucuya yonlendiren eski ayarlarin (--dns-addr) yerini aldi: sorgular HTTPS ile gider ve
         // 53. portu disariya kapali aglarda da calisir.
         public static readonly string[] List = {
-            "-9 --set-ttl 7",                                                     // easydpi
-            "-9 --set-ttl 7",
-            "-5 --set-ttl 5",                                                     // cagritaskn
-            "-5 --set-ttl 5",
+            // Otomatik TTL (-5'in kendisi, -9'da --auto-ttl): sahte paketin TTL'i sunucuya olan uzakliga
+            // gore secilir, sunucudan once duser. Sabit TTL (eski "-9 --set-ttl 7" / "-5 --set-ttl 5")
+            // sunucu o kadar atlamadan yakinsa (Google'in ISS icindeki onbellekleri, Cloudflare Istanbul)
+            // sahte ClientHello'yu sunucuya ulastirip baglantiyi bozuyordu: Discord "baglandi" derken
+            // Google/YouTube/CDN acilmiyordu (olculdu: Google 4, Discord 6 atlama).
+            // -q: QUIC/HTTP3 engellenir (-9'da zaten var). Yoksa Chrome/Edge ve Discord uygulamasi
+            // (Electron) siteye QUIC ile gider; GoodbyeDPI QUIC'e dokunmaz, DPI SNI'yi gorup keser ve
+            // dogrulama (TCP) yesil gosterirken uygulamalar acilmaz. Engellenince TCP'ye duserler.
+            // Olcum (36 istek, Almanya): "-5 -q" 36/36, "-9 --auto-ttl" 33/36 (uc sahte paketten biri ara sira
+            // Cloudflare'e ulasiyor); bu yuzden -5 once.
+            "-5 -q",                                                              // cagritaskn (-5), otomatik TTL
+            "-5 -q",
+            "-9 --auto-ttl",                                                      // easydpi (-9), otomatik TTL
+            "-9 --auto-ttl",
+            // Son yedek, Turkiye'de calistigi bilinen sabit TTL'li hali (cagritaskn): yakin sunuculari
+            // bozar (olculdu), dogrulama Google'a da baktigi icin hicbir zaman yesil olmaz; baska hicbiri
+            // Discord'u acamazsa yedek olarak (turuncu) kullanilir.
+            "-5 --set-ttl 5 -q",
+            "-5 --set-ttl 5 -q",
         };
-        public static readonly bool[] Doh = { false, true, false, true };
+        public static readonly bool[] Doh = { false, true, false, true, false, true };
 
         public static List<string> Args(int i) { return new List<string>(List[i].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)); }
 
@@ -81,7 +167,7 @@ namespace SwarlexEasyDpi
         public bool Animation = true;     // panel/menu kayarak acilir
         public string Theme = "auto";     // auto | dark | light
         public bool KeepIcon = true;      // simge saatin yaninda (^ okunun arkasinda degil)
-        const int Version = 4;            // ayar listesi degisince eski indeks gecersiz
+        const int Version = 6;            // ayar listesi degisince eski indeks gecersiz (6: otomatik TTL, 6 ayar)
 
         public static Settings Load()
         {
@@ -146,7 +232,7 @@ namespace SwarlexEasyDpi
             {
                 lock (saveGate)
                 {
-                    Directory.CreateDirectory(Paths.Dir);
+                    Paths.EnsureDir();
                     File.WriteAllText(Paths.Settings,
                         "version=" + Version + Environment.NewLine +
                         "config=" + Config + Environment.NewLine +
@@ -188,6 +274,7 @@ namespace SwarlexEasyDpi
         bool dohOn;         // sifreli DNS su an gercekten calisiyor mu
         int gen;            // her Connect/Stop'ta artar; eski arka plan isleri kendini iptal eder
         int crashes;
+        int running;        // su an calisan ayar (yedek ayar settings.Config'e kaydedilmez)
         DateTime startedAt;
         State current = State.Off;
 
@@ -203,7 +290,11 @@ namespace SwarlexEasyDpi
 
         public static void InstallBinaries()
         {
+#if PORTABLE
+            CreatePortableBin();
+#else
             Directory.CreateDirectory(Paths.Bin);
+#endif
             using (var sha = SHA256.Create())
             {
                 foreach (var f in Files)
@@ -223,6 +314,33 @@ namespace SwarlexEasyDpi
                 try { if (File.Exists(p)) { File.Delete(p); Log.Write("Eski dosya silindi: " + p); } } catch (Exception) { }
             }
         }
+
+#if PORTABLE
+        static bool portableBinMade;
+
+        // Tasinabilir surum: motor klasorunu (Windows\Temp\SwarlexEasyDpi-<rastgele>) yalniz SYSTEM ve
+        // Yoneticiler'e acik, kalitimi kapali izinlerle olusturur; onceki acilislardan kalanlari siler.
+        static void CreatePortableBin()
+        {
+            if (portableBinMade) return;
+            string[] olds;
+            try { olds = Directory.GetDirectories(Paths.TempRoot, Paths.BinPrefix + "*"); }
+            catch (Exception) { olds = new string[0]; }   // temizlik en iyi cabayla: listeleme hatasi baglanmayi durdurmasin
+            foreach (string old in olds)
+            {
+                try
+                {
+                    // yalniz bizim olusturdugumuz turden (Paths.Trusted)
+                    var di = new DirectoryInfo(old);
+                    if (Paths.Trusted(di)) di.Delete(true);
+                }
+                catch (Exception) { }   // onceki calismanin surucusu hala yukluyse: sonra silinir
+            }
+            if (Directory.Exists(Paths.Bin)) throw new IOException("motor klasoru zaten var: " + Paths.Bin);
+            Directory.CreateDirectory(Paths.Bin, Paths.AdminOnly());
+            portableBinMade = true;
+        }
+#endif
 
         static byte[] Resource(string name)
         {
@@ -283,37 +401,84 @@ namespace SwarlexEasyDpi
         // Uygulama icinde HTTP istegi: harici curl yok (yonetici olarak calisan curl, kullanicinin
         // yazabildigi %APPDATA%\_curlrc dosyasini okurdu). Proxy kullanilmaz; DNS onbellegi tutulmaz
         // ki ayar degisince eski (zehirli) cevap kullanilmasin.
-        public static bool Probe()
+        // Discord uygulamasi discord.com'un yaninda gateway.discord.gg (sohbet baglantisi) ve
+        // cdn.discordapp.com'a (resim/dosya) da baglanir. Engel bunlarda ayri olabilir (DNS ya da SNI):
+        // yalniz discord.com'a bakmak "yesil ama Discord acilmiyor" sonucunu verirdi. Google: engelli
+        // degil ama sunuculari yakin; sahte paketleri sunucuya ulastirip siteleri bozan bir ayari en iyi
+        // o yakalar. Bu ek uclarda gecerli sertifikayla gelen herhangi bir HTTP cevabi (404/403/204) yeterli.
+        static readonly string[] ExtraProbes = { "https://gateway.discord.gg/", "https://cdn.discordapp.com/", "https://www.google.com/generate_204" };
+
+        // full: ayar secerken tum uclari ister. Ag degisince (Recheck) yalniz discord.com: yavas bir CDN
+        // calisan baglantiyi koparip tum ayarlari bastan denetmesin.
+        public static bool Probe(bool full = true) { bool d; return Probe(full, out d); }
+
+        // discordOk: discord.com API'si 200 dondu mu (digerleri basarisiz olsa da; yedek ayar secimi icin).
+        public static bool Probe(bool full, out bool discordOk)
         {
-            try
+            var all = new List<System.Threading.Tasks.Task<bool>>();
+            var names = new List<string>();
+            var reqs = new List<HttpWebRequest>();
+            all.Add(ProbeStart(ProbeUrl, true, reqs)); names.Add(ProbeUrl);
+            if (full) foreach (string u in ExtraProbes) { all.Add(ProbeStart(u, false, reqs)); names.Add(u); }
+            // DNS cozumleme req.Timeout'a dahil degil (15 sn'ye kadar surebilir): toplam sureyi sinirla.
+            // Biri basarisiz olunca digerlerini beklemeden don (engelli ayar hizli elensin).
+            var deadline = DateTime.UtcNow.AddMilliseconds(5000);
+            var pending = new List<System.Threading.Tasks.Task<bool>>(all);
+            bool ok = true;
+            while (pending.Count > 0 && ok)
             {
-                var req = (HttpWebRequest)WebRequest.Create(ProbeUrl);
-                req.Proxy = null;
-                req.KeepAlive = false;
-                req.Timeout = 4000; req.ReadWriteTimeout = 4000; // hizli secim: engelli ayar 4 sn'de elenir
-                req.AllowAutoRedirect = false;
-                req.UserAgent = "SwarlexEasyDpi";
-                var t = System.Threading.Tasks.Task.Run(() => { using (var resp = (HttpWebResponse)req.GetResponse()) return (int)resp.StatusCode == 200; });
-                // DNS cozumleme req.Timeout'a dahil degil (15 sn'ye kadar surebilir): toplam sureyi sinirla
-                if (!t.Wait(5000)) { req.Abort(); Log.Write("  dogrulama: zaman asimi"); return false; }
-                return t.Result;
+                int left = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+                int i = left > 0 ? System.Threading.Tasks.Task.WaitAny(pending.ToArray(), left) : -1;
+                if (i < 0)
+                {
+                    foreach (var t in pending) Log.Write("  dogrulama: zaman asimi (" + names[all.IndexOf(t)] + ")");
+                    ok = false;
+                    break;
+                }
+                ok = pending[i].Result;
+                pending.RemoveAt(i);
             }
-            catch (AggregateException ae)
+            // baska bir uc erken basarisiz olduysa discord.com'un sonucunu kalan sure icinde bekle (yedek secimi)
+            if (!ok && !all[0].IsCompleted)
             {
-                var ex = ae.InnerException as WebException;
-                var r = ex != null ? ex.Response as HttpWebResponse : null;
-                Log.Write("  dogrulama: " + (r != null ? ((int)r.StatusCode).ToString() : ex != null ? ex.Status.ToString() : ae.InnerException.Message));
-                if (r != null) r.Close();
-                return false;
+                int left = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+                if (left > 0) try { all[0].Wait(left); } catch (AggregateException) { }
             }
-            catch (WebException ex)
+            discordOk = all[0].Status == System.Threading.Tasks.TaskStatus.RanToCompletion && all[0].Result;
+            if (pending.Count > 0) foreach (var r in reqs) try { r.Abort(); } catch (Exception) { }
+            return ok;
+        }
+
+        // needOk: yalniz 200 sayilir; degilse herhangi bir HTTP cevabi (TLS ve DNS gecti demektir).
+        static System.Threading.Tasks.Task<bool> ProbeStart(string url, bool needOk, List<HttpWebRequest> reqs)
+        {
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Proxy = null;
+            req.KeepAlive = false;
+            req.Timeout = 4000; req.ReadWriteTimeout = 4000; // hizli secim: engelli ayar 4 sn'de elenir
+            req.AllowAutoRedirect = false;
+            req.UserAgent = "SwarlexEasyDpi";
+            reqs.Add(req);
+            return System.Threading.Tasks.Task.Run(() =>
             {
-                var r = ex.Response as HttpWebResponse;
-                Log.Write("  dogrulama: " + (r != null ? ((int)r.StatusCode).ToString() : ex.Status.ToString()));
-                if (r != null) r.Close();
-                return false;
-            }
-            catch (Exception ex) { Log.Write("  dogrulama hatasi: " + ex.Message); return false; }
+                try
+                {
+                    using (var resp = (HttpWebResponse)req.GetResponse())
+                    {
+                        bool ok = !needOk || (int)resp.StatusCode == 200;
+                        if (!ok) Log.Write("  dogrulama: " + (int)resp.StatusCode + " (" + url + ")");
+                        return ok;
+                    }
+                }
+                catch (WebException ex)
+                {
+                    var r = ex.Response as HttpWebResponse;
+                    if (r != null) { int code = (int)r.StatusCode; r.Close(); if (!needOk) return true; Log.Write("  dogrulama: " + code + " (" + url + ")"); return false; }
+                    Log.Write("  dogrulama: " + ex.Status + " (" + url + ")");
+                    return false;
+                }
+                catch (Exception ex) { Log.Write("  dogrulama hatasi: " + ex.Message + " (" + url + ")"); return false; }
+            });
         }
 
         public static void ConfigureNet()
@@ -328,21 +493,25 @@ namespace SwarlexEasyDpi
         // Turk Telekom engel sayfasi (Shroudly'de de yerlesik). Zehirli DNS cevaplari bunu ya da bogon dondurur.
         static readonly string[] BlockPages = { "195.175.254.2" };
 
-        // Sistem DNS'i discord.com icin engel sayfasi / bogon donduruyor mu? (3 sn sinir)
+        // Sistem DNS'i Discord adlari icin engel sayfasi / bogon donduruyor mu? (3 sn sinir)
+        // Adlar ayri ayri zehirlenebilir (or. discord.com degil ama gateway.discord.gg).
         public static bool DnsPoisoned()
         {
-            try
+            try { DnsFlushResolverCache(); } catch (Exception) { }
+            // async: takilan bir cozumleme is parcacigi havuzunu tutmasin (ardindan gelen Probe gecikmesin)
+            var all = new List<System.Threading.Tasks.Task<IPAddress[]>>();
+            foreach (string host in new[] { "discord.com", "gateway.discord.gg", "cdn.discordapp.com" })
+                all.Add(Dns.GetHostAddressesAsync(host));
+            try { System.Threading.Tasks.Task.WaitAll(all.ToArray(), 3000); } catch (AggregateException) { }
+            foreach (var t in all)
             {
-                try { DnsFlushResolverCache(); } catch (Exception) { }
-                var t = System.Threading.Tasks.Task.Run(() => Dns.GetHostAddresses("discord.com"));
-                if (!t.Wait(3000)) return false;
+                if (t.Status != System.Threading.Tasks.TaskStatus.RanToCompletion) continue;
                 foreach (var a in t.Result)
                 {
                     if (a.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
                     if (Array.IndexOf(BlockPages, a.ToString()) >= 0 || IsBogon(a.GetAddressBytes())) return true;
                 }
             }
-            catch (Exception) { }
             return false;
         }
 
@@ -392,6 +561,7 @@ namespace SwarlexEasyDpi
                 order = doh;
             }
 
+            int fallback = -1;   // hepsini gecemeyen ama Discord'u acan ilk ayar
             for (int n = 0; n < order.Count; n++)
             {
                 int c = order[n];
@@ -402,7 +572,13 @@ namespace SwarlexEasyDpi
                 Thread.Sleep(1200); // WinDivert filtresi ~1 sn icinde devrede
                 if (!Running(my)) { Log.Write("goodbyedpi kapandi"); continue; }
                 try { DnsFlushResolverCache(); } catch (Exception) { }
-                if (!Probe()) { Log.Write("Dogrulanamadi: " + Configs.Describe(c)); continue; }
+                bool discordOk;
+                if (!Probe(true, out discordOk))
+                {
+                    Log.Write("Dogrulanamadi: " + Configs.Describe(c) + (discordOk ? " (Discord acik; yedek)" : ""));
+                    if (discordOk && fallback < 0) fallback = c;
+                    continue;
+                }
                 if (settings.Config != c) { settings.Config = c; settings.Save(); }
                 string dns = dohOn ? Configs.DnsName(c) : null;
                 // dogrulama surerken surec olmus olabilir: kontrol ve durum ayni kilit altinda
@@ -417,19 +593,21 @@ namespace SwarlexEasyDpi
                 return;
             }
 
-            // Hicbiri dogrulanamadi (internet yok ya da Discord kapali): kayitli ayarla acik kal.
+            // Hicbiri tam dogrulanamadi: Discord'u acan bir ayar olduysa onunla, yoksa kayitli ayarla
+            // acik kal (internet yok ya da Discord kapali).
             if (!Alive(my)) return;
-            if (StartConfig(my, settings.Config))
+            int keep = fallback >= 0 ? fallback : settings.Config;
+            if (StartConfig(my, keep))
             {
                 Thread.Sleep(1000);
-                string dns = dohOn ? Configs.DnsName(settings.Config) : null;
+                string dns = dohOn ? Configs.DnsName(keep) : null;
                 lock (gate)
                 {
                     if (my != gen) return;
                     if (proc != null && !proc.HasExited)
                     {
                         Raise(my, State.Unverified, new Info { Dns = dns });
-                        Log.Write("Hicbir ayar dogrulanamadi; kayitli ayarla acik");
+                        Log.Write("Hicbir ayar tam dogrulanamadi; acik: " + Configs.Describe(keep));
                         return;
                     }
                 }
@@ -447,6 +625,7 @@ namespace SwarlexEasyDpi
                 {
                     if (stuck) { Log.Write("Onceki GoodbyeDPI calismasi durmadi; yeniden baslatma gerekli"); return false; }
                     var run = new GdpiRun(Configs.Args(c));
+                    running = c;
                     run.Finished += OnExited;
                     proc = run;
                     startedAt = DateTime.Now;
@@ -527,13 +706,18 @@ namespace SwarlexEasyDpi
             int my; State was;
             lock (gate) { if (current != State.On && current != State.Unverified) return; my = gen; was = current; }
             try { DnsFlushResolverCache(); } catch (Exception) { }
-            if (Probe())
+            // Dogrulanmamis (or. yedek ayar): yesile gecmek icin tum uclar gecmeli; yalniz Discord aciksa
+            // oldugu gibi kalir. Yesilken yalniz discord.com'a bakilir (yavas CDN baglantiyi koparmasin).
+            bool discordOk, all;
+            if (was == State.Unverified) all = Probe(true, out discordOk);
+            else all = discordOk = Probe(false);
+            if (discordOk)
             {
-                Log.Write("Ag degisikliginden sonra baglanti saglam");
-                if (was == State.Unverified)
+                Log.Write("Ag degisikliginden sonra baglanti saglam" + (all ? "" : " (yalniz Discord)"));
+                if (was == State.Unverified && all)
                     lock (gate)
                         if (my == gen && current == State.Unverified && proc != null && !proc.HasExited)
-                            Raise(my, State.On, new Info { Dns = dohOn ? Configs.DnsName(settings.Config) : null });
+                            Raise(my, State.On, new Info { Dns = dohOn ? Configs.DnsName(running) : null });
                 return;
             }
             Log.Write("Ag degisikliginden sonra baglanti yok; yeniden baglaniliyor");

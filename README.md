@@ -14,6 +14,8 @@
 
 <sub>Single file · no installer · updates itself · English &amp; Türkçe</sub>
 
+<sub>Prefer nothing installed? [SwarlexEasyDpi-Portable.exe](https://github.com/swarlex/SwarlexEasyDpi/releases/latest/download/SwarlexEasyDpi-Portable.exe) runs where it is, without copying itself to Program Files (settings: `C:\ProgramData\SwarlexEasyDpi-Portable`).</sub>
+
 [Quick start](#quick-start) · [Screenshots](#screenshots) · [Features](#features) · [FAQ](#faq) · [Türkçe](#türkçe) · [Changelog](docs/CHANGELOG.md)
 
 </div>
@@ -114,6 +116,10 @@ ve oyunlar dahil. Ayar yok: kendisi bağlanır, çalışan ayarı kendisi bulur.
 2. **Bir kez yönetici izni verin** (paket filtresi sürücüsü için). Program kendini
    `C:\Program Files\SwarlexEasyDpi` klasörüne kopyalar.
 3. **Bu kadar.** Saatin yanındaki simge yeşilse açık. Sağ tık > *Tercihler* > *Windows ile başlat*.
+
+**Taşınabilir sürüm:** [SwarlexEasyDpi-Portable.exe](https://github.com/swarlex/SwarlexEasyDpi/releases/latest/download/SwarlexEasyDpi-Portable.exe)
+kendini Program Files'a kopyalamaz, olduğu yerde çalışır; ayarları `C:\ProgramData\SwarlexEasyDpi-Portable`
+klasöründe tutar (yalnız yönetici yazabilir). Kendini güncellemez, Windows ile başlamaz.
 
 Sol tık: büyük aç/kapat düğmeli panel. Sağ tık: menü (Dil, Tercihler, güncellemeler, tanılama).
 Simge: yeşil = açık, dönen = bağlanıyor, soluk = kapalı, turuncu = açık ama doğrulanamadı, kırmızı = hata.

@@ -209,7 +209,8 @@ namespace SwarlexEasyDpi
                 using (var root = Registry.CurrentUser.OpenSubKey(@"Control Panel\NotifyIconSettings"))
                 {
                     if (root == null) return false;
-                    string me = Paths.InstalledExe, leaf = "\\" + Path.GetFileName(me);
+                    // tasinabilir surum Program Files'ta degil, oldugu yerde (ve baska adla) calisir
+                    string me = Paths.Portable ? System.Windows.Forms.Application.ExecutablePath : Paths.InstalledExe, leaf = "\\" + Path.GetFileName(me);
                     foreach (var name in root.GetSubKeyNames())
                         using (var k = root.OpenSubKey(name, true))
                         {
