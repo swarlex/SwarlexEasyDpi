@@ -128,21 +128,27 @@ namespace SwarlexEasyDpi
         // sunucuya yonlendiren eski ayarlarin (--dns-addr) yerini aldi: sorgular HTTPS ile gider ve
         // 53. portu disariya kapali aglarda da calisir.
         public static readonly string[] List = {
-            // --auto-ttl: sahte paketin TTL'i sunucuya olan uzakliga gore secilir, sunucudan once duser.
-            // Sabit TTL (eski "-9 --set-ttl 7") sunucu 7 atlamadan yakinsa (Google'in ISS icindeki
-            // onbellekleri, Cloudflare Istanbul) sahte ClientHello'yu sunucuya ulastirip baglantiyi
-            // bozuyordu: Discord "baglandi" derken Google/YouTube/CDN acilmiyordu (olculdu: 4-6 atlama).
-            "-9 --auto-ttl",                                                      // easydpi (-9)
-            "-9 --auto-ttl",
-            // Yedek: yakin sunucularda yine bozabilir; dogrulama Google ve Discord CDN'e de baktigi
-            // icin bozuyorsa tam dogrulanmis sayilmaz.
+            // Otomatik TTL (-5'in kendisi, -9'da --auto-ttl): sahte paketin TTL'i sunucuya olan uzakliga
+            // gore secilir, sunucudan once duser. Sabit TTL (eski "-9 --set-ttl 7" / "-5 --set-ttl 5")
+            // sunucu o kadar atlamadan yakinsa (Google'in ISS icindeki onbellekleri, Cloudflare Istanbul)
+            // sahte ClientHello'yu sunucuya ulastirip baglantiyi bozuyordu: Discord "baglandi" derken
+            // Google/YouTube/CDN acilmiyordu (olculdu: Google 4, Discord 6 atlama).
             // -q: QUIC/HTTP3 engellenir (-9'da zaten var). Yoksa Chrome/Edge ve Discord uygulamasi
             // (Electron) siteye QUIC ile gider; GoodbyeDPI QUIC'e dokunmaz, DPI SNI'yi gorup keser ve
             // dogrulama (TCP) yesil gosterirken uygulamalar acilmaz. Engellenince TCP'ye duserler.
-            "-5 --set-ttl 5 -q",                                                  // cagritaskn
+            // Olcum (36 istek, Almanya): "-5 -q" 36/36, "-9 --auto-ttl" 33/36 (uc sahte paketten biri ara sira
+            // Cloudflare'e ulasiyor); bu yuzden -5 once.
+            "-5 -q",                                                              // cagritaskn (-5), otomatik TTL
+            "-5 -q",
+            "-9 --auto-ttl",                                                      // easydpi (-9), otomatik TTL
+            "-9 --auto-ttl",
+            // Son yedek, Turkiye'de calistigi bilinen sabit TTL'li hali (cagritaskn): yakin sunuculari
+            // bozar (olculdu), dogrulama Google'a da baktigi icin hicbir zaman yesil olmaz; baska hicbiri
+            // Discord'u acamazsa yedek olarak (turuncu) kullanilir.
+            "-5 --set-ttl 5 -q",
             "-5 --set-ttl 5 -q",
         };
-        public static readonly bool[] Doh = { false, true, false, true };
+        public static readonly bool[] Doh = { false, true, false, true, false, true };
 
         public static List<string> Args(int i) { return new List<string>(List[i].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)); }
 
@@ -161,7 +167,7 @@ namespace SwarlexEasyDpi
         public bool Animation = true;     // panel/menu kayarak acilir
         public string Theme = "auto";     // auto | dark | light
         public bool KeepIcon = true;      // simge saatin yaninda (^ okunun arkasinda degil)
-        const int Version = 5;            // ayar listesi degisince eski indeks gecersiz (5: --auto-ttl)
+        const int Version = 6;            // ayar listesi degisince eski indeks gecersiz (6: otomatik TTL, 6 ayar)
 
         public static Settings Load()
         {

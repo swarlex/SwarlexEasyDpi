@@ -18,7 +18,7 @@ namespace SwarlexEasyDpi
             string outDir = a.Length > 0 ? a[0] : ".";
 
             // ayar listesi: az ve hizli, yalniz bilinen GoodbyeDPI secenekleri, port 1111 hatasi yok
-            Check("configs 4", Configs.List.Length == 4);
+            Check("configs 6", Configs.List.Length == 6);
             Check("configs unique", Enumerable.Range(0, Configs.List.Length).Select(Configs.Describe).Distinct().Count() == Configs.List.Length);
             Check("doh flags match", Configs.Doh.Length == Configs.List.Length && Configs.Doh.Any(d => d) && Configs.Doh.Any(d => !d));
             Check("no plain DNS redirect", !Configs.List.Any(c => c.Contains("--dns")));

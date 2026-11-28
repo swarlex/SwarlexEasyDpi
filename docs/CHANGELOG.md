@@ -7,8 +7,9 @@ All notable changes. Downloads: [Releases](https://github.com/swarlex/SwarlexEas
 ### Fixed
 - **Sites broke while it was on.** The fixed-TTL settings (`--set-ttl 7` / `5`) sent their fake packets far enough
   to reach servers that are only a few hops away (measured: Google 4, Discord/Cloudflare 6), which broke the real
-  connection. The first settings are now `-9 --auto-ttl` (the fake packet's TTL follows the server's distance);
-  the old `-5 --set-ttl 5 -q` stays as a fallback. The saved setting starts over once. The connection check now
+  connection. The settings now use an automatic TTL that follows the server's distance: `-5 -q` first, then
+  `-9 --auto-ttl`; the old `-5 --set-ttl 5 -q` is only a last resort. The saved setting starts over once.
+  The engine also no longer reuses the previous connection's TTL when a server's distance is unknown. The connection check now
   also asks `www.google.com/generate_204`: a setting that breaks nearby servers is never shown as green (if
   nothing passes everything, one that at least opens Discord is kept, shown orange).
 - **Green, but Discord or sites did not open.** The connection check only asked discord.com from the app itself
